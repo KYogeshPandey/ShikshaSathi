@@ -1,48 +1,41 @@
 ﻿from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from datetime import timedelta
+from flask_jwt_extended import create_access_token
+from pydantic import ValidationError
+from app.schemas.auth_schema import RegisterSchema, LoginSchema
+from app.services.auth_service import register_user, authenticate
 
 bp = Blueprint('auth', __name__)
 
-@bp.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    
-    if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'success': False, 'message': 'Username and password required'}), 400
-    
-    username = data['username']
-    password = data['password']
-    
-    if username == 'admin' and password == 'admin123':
-        access_token = create_access_token(
-            identity=username,
-            expires_delta=timedelta(hours=1)
-        )
-        return jsonify({
-            'success': True,
-            'message': 'Login successful',
-            'access_token': access_token,
-            'user': {'username': username, 'role': 'admin'}
-        }), 200
-    
-    return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
-
 @bp.route('/register', methods=['POST'])
 def register():
-    data = request.get_json()
-    
-    if not all(k in data for k in ['username', 'password', 'email']):
-        return jsonify({'success': False, 'message': 'All fields required'}), 400
-    
-    return jsonify({
-        'success': True,
-        'message': 'User registered',
-        'user': {'username': data['username'], 'email': data['email']}
-    }), 201
+    try:
+        payload = RegisterSchema(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"success": False, "errors": e.errors()}), 400
 
-@bp.route('/me', methods=['GET'])
-@jwt_required()
-def get_current_user():
-    current_user = get_jwt_identity()
-    return jsonify({'success': True, 'user': {'username': current_user}}), 200
+    user_id, err = register_user(
+        payload.username, payload.email, payload.password, payload.role
+    )
+    if err:
+        return jsonify({"success": False, "message": err}), 409
+
+    return jsonify({"success": True, "user_id": user_id}), 201
+
+@bp.route('/login', methods=['POST'])
+def login():
+    try:
+        payload = LoginSchema(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"success": False, "errors": e.errors()}), 400
+
+    user = authenticate(payload.username, payload.password)
+    if not user:
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
+
+    token = create_access_token(identity=user["username"])
+    return jsonify({
+        "success": True,
+        "message": "Login successful",
+        "access_token": token,
+        "user": {"username": user["username"], "role": user.get("role", "teacher")}
+    }), 200
