@@ -54,8 +54,11 @@ def create_app():
     # Register ALL blueprints here
     from app.api.v1.auth import bp as auth_bp
     from app.api.v1.students import bp as students_bp
-    from app.api.v1.classrooms import bp as classrooms_bp  
+    from app.api.v1.classrooms import bp as classrooms_bp
+    from app.api.v1.reports import bp as report_bp
+  
     # add new blueprints below as needed!
+    app.register_blueprint(report_bp, url_prefix='/api/v1/attendance')
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(students_bp, url_prefix='/api/v1/students')
     app.register_blueprint(classrooms_bp, url_prefix='/api/v1/classrooms')
