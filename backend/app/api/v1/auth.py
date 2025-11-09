@@ -21,6 +21,7 @@ def register():
 
     return jsonify({"success": True, "user_id": user_id}), 201
 
+# ==== ADD THIS LOGIN ROUTE BELOW ====
 @bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -32,7 +33,10 @@ def login():
     if not user:
         return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
-    token = create_access_token(identity=user["username"])
+    token = create_access_token(
+        identity=user["username"],
+        additional_claims={"role": user["role"]}
+    )
     return jsonify({
         "success": True,
         "message": "Login successful",

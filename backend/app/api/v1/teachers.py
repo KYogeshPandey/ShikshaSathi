@@ -3,17 +3,20 @@ from flask_jwt_extended import jwt_required
 from pydantic import ValidationError
 from app.schemas.teacher_schema import TeacherCreate, TeacherUpdate
 from app.services.teacher_service import *
+from app.utils.auth import requires_roles
 
 bp = Blueprint("teachers", __name__)
 
 @bp.route("/", methods=["GET"])
 @jwt_required()
+@requires_roles("admin")        # Only admin can see all teachers
 def list_teachers_route():
     result = get_all_teachers()
     return jsonify({"success": True, "data": result}), 200
 
 @bp.route("/", methods=["POST"])
 @jwt_required()
+@requires_roles("admin")        # Only admin can add teachers
 def create_teacher_route():
     try:
         payload = TeacherCreate(**request.get_json())
@@ -25,6 +28,7 @@ def create_teacher_route():
 
 @bp.route("/<tid>", methods=["GET"])
 @jwt_required()
+@requires_roles("admin", "teacher")    # Admin and the teacher themselves
 def get_teacher_route(tid):
     t = get_teacher_by_id(tid)
     if not t:
@@ -33,6 +37,7 @@ def get_teacher_route(tid):
 
 @bp.route("/<tid>", methods=["PUT"])
 @jwt_required()
+@requires_roles("admin")               # Only admin can update
 def update_teacher_route(tid):
     try:
         payload = TeacherUpdate(**request.get_json())
@@ -44,12 +49,14 @@ def update_teacher_route(tid):
 
 @bp.route("/<tid>", methods=["DELETE"])
 @jwt_required()
+@requires_roles("admin")               # Only admin can delete
 def delete_teacher_route(tid):
     delete_teacher_data(tid)
     return jsonify({"success": True}), 200
 
 @bp.route("/<tid>/assign_classroom", methods=["POST"])
 @jwt_required()
+@requires_roles("admin")               # Only admin assign classroom
 def assign_classroom_route(tid):
     cid = request.json.get("classroom_id")
     assign_classroom_to_teacher(tid, cid)
@@ -57,6 +64,7 @@ def assign_classroom_route(tid):
 
 @bp.route("/<tid>/remove_classroom", methods=["POST"])
 @jwt_required()
+@requires_roles("admin")               # Only admin remove classroom
 def remove_classroom_route(tid):
     cid = request.json.get("classroom_id")
     remove_classroom_from_teacher(tid, cid)

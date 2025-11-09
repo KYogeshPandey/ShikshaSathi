@@ -6,11 +6,13 @@ from app.services.attendance_service import (
     add_attendance, get_all_attendance, get_attendance_by_id,
     update_attendance_data, delete_attendance_data
 )
+from app.utils.auth import requires_roles
 
 bp = Blueprint("attendance", __name__)
 
 @bp.route("/", methods=["GET"])
 @jwt_required()
+@requires_roles("admin", "teacher")       # Only admin/teacher can view
 def list_attendance_route():
     filter_params = {
         "student_id": request.args.get("student_id"),
@@ -23,6 +25,7 @@ def list_attendance_route():
 
 @bp.route("/", methods=["POST"])
 @jwt_required()
+@requires_roles("admin", "teacher")       # Only admin/teacher can mark attendance
 def create_attendance_route():
     try:
         payload = AttendanceCreate(**request.get_json())
@@ -34,6 +37,7 @@ def create_attendance_route():
 
 @bp.route("/<aid>", methods=["GET"])
 @jwt_required()
+@requires_roles("admin", "teacher", "student")  # All logged in roles can fetch (students see their own via filter)
 def get_attendance_route(aid):
     att = get_attendance_by_id(aid)
     if not att:
@@ -42,6 +46,7 @@ def get_attendance_route(aid):
 
 @bp.route("/<aid>", methods=["PUT"])
 @jwt_required()
+@requires_roles("admin")       # Only admin can update attendance
 def update_attendance_route(aid):
     data = request.get_json()
     update_attendance_data(aid, data)
@@ -49,6 +54,7 @@ def update_attendance_route(aid):
 
 @bp.route("/<aid>", methods=["DELETE"])
 @jwt_required()
+@requires_roles("admin")       # Only admin can delete attendance
 def delete_attendance_route(aid):
     delete_attendance_data(aid)
     return jsonify({"success": True}), 200

@@ -1,9 +1,16 @@
 from app.models.classroom import (
-    create_classroom, list_classrooms, get_classroom,
-    update_classroom, delete_classroom
+    create_classroom,
+    list_classrooms,
+    get_classroom,
+    update_classroom,
+    delete_classroom,
+    add_students_to_classroom,
+    remove_students_from_classroom,
+    get_students_of_classroom
 )
 
 def add_classroom(data: dict):
+    data.setdefault("student_ids", [])
     return create_classroom(data)
 
 def get_all_classrooms():
@@ -17,3 +24,14 @@ def update_classroom_data(cid: str, data: dict):
 
 def delete_classroom_data(cid: str):
     delete_classroom(cid)
+
+# STUDENT mapping functions
+
+def assign_students(classroom_id: str, student_ids: list):
+    add_students_to_classroom(classroom_id, student_ids)
+
+def unassign_students(classroom_id: str, student_ids: list):
+    remove_students_from_classroom(classroom_id, student_ids)
+
+def list_students_in_classroom(classroom_id: str):
+    return get_students_of_classroom(classroom_id)
