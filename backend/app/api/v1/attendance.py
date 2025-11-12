@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from pydantic import ValidationError
 from app.schemas.attendance_schema import AttendanceCreate
@@ -10,10 +10,22 @@ from app.utils.auth import requires_roles
 
 bp = Blueprint("attendance", __name__)
 
-@bp.route("/", methods=["GET"])
-@jwt_required()
-@requires_roles("admin", "teacher")       # Only admin/teacher can view
+def _cors_options_response(methods="GET,POST,PUT,DELETE,OPTIONS"):
+    response = make_response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = methods
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response, 200
+
+@bp.route("/", methods=["GET", "OPTIONS"])
 def list_attendance_route():
+    if request.method == "OPTIONS":
+        return _cors_options_response("GET,OPTIONS")
+    return _list_attendance_route()
+
+@jwt_required()
+@requires_roles("admin", "teacher")
+def _list_attendance_route():
     filter_params = {
         "student_id": request.args.get("student_id"),
         "classroom_id": request.args.get("classroom_id"),
@@ -23,10 +35,15 @@ def list_attendance_route():
     result = get_all_attendance(filter_params)
     return jsonify({"success": True, "data": result}), 200
 
-@bp.route("/", methods=["POST"])
-@jwt_required()
-@requires_roles("admin", "teacher")       # Only admin/teacher can mark attendance
+@bp.route("/", methods=["POST", "OPTIONS"])
 def create_attendance_route():
+    if request.method == "OPTIONS":
+        return _cors_options_response("POST,OPTIONS")
+    return _create_attendance_route()
+
+@jwt_required()
+@requires_roles("admin", "teacher")
+def _create_attendance_route():
     try:
         payload = AttendanceCreate(**request.get_json())
     except ValidationError as e:
@@ -35,26 +52,41 @@ def create_attendance_route():
     aid = add_attendance(payload.dict())
     return jsonify({"success": True, "id": aid}), 201
 
-@bp.route("/<aid>", methods=["GET"])
-@jwt_required()
-@requires_roles("admin", "teacher", "student")  # All logged in roles can fetch (students see their own via filter)
+@bp.route("/<aid>", methods=["GET", "OPTIONS"])
 def get_attendance_route(aid):
+    if request.method == "OPTIONS":
+        return _cors_options_response("GET,OPTIONS")
+    return _get_attendance_route(aid)
+
+@jwt_required()
+@requires_roles("admin", "teacher", "student")
+def _get_attendance_route(aid):
     att = get_attendance_by_id(aid)
     if not att:
         return jsonify({"success": False, "message": "Not found"}), 404
     return jsonify({"success": True, "data": att}), 200
 
-@bp.route("/<aid>", methods=["PUT"])
-@jwt_required()
-@requires_roles("admin")       # Only admin can update attendance
+@bp.route("/<aid>", methods=["PUT", "OPTIONS"])
 def update_attendance_route(aid):
+    if request.method == "OPTIONS":
+        return _cors_options_response("PUT,OPTIONS")
+    return _update_attendance_route(aid)
+
+@jwt_required()
+@requires_roles("admin")
+def _update_attendance_route(aid):
     data = request.get_json()
     update_attendance_data(aid, data)
     return jsonify({"success": True}), 200
 
-@bp.route("/<aid>", methods=["DELETE"])
-@jwt_required()
-@requires_roles("admin")       # Only admin can delete attendance
+@bp.route("/<aid>", methods=["DELETE", "OPTIONS"])
 def delete_attendance_route(aid):
+    if request.method == "OPTIONS":
+        return _cors_options_response("DELETE,OPTIONS")
+    return _delete_attendance_route(aid)
+
+@jwt_required()
+@requires_roles("admin")
+def _delete_attendance_route(aid):
     delete_attendance_data(aid)
     return jsonify({"success": True}), 200

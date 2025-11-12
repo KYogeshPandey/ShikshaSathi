@@ -1,27 +1,36 @@
-from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
-from app.core.db import get_db
+from flask import Blueprint, request, jsonify, make_response
+from flask_jwt_extended import create_access_token
+from pydantic import ValidationError
+from app.schemas.auth_schema import RegisterSchema, LoginSchema
+from app.services.auth_service import register_user, authenticate
 
-COLL = "users"
+bp = Blueprint('auth', __name__)
 
-def find_by_username(username: str):
-    db = get_db()
-    return db[COLL].find_one({"username": username})
+@bp.route('/login', methods=['POST', 'OPTIONS'])
+def login():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
 
-def create_user(username: str, email: str, password: str, role: str = "teacher"):
-    db = get_db()
-    hashed = generate_password_hash(password)
-    doc = {
-        "username": username,
-        "email": email,
-        "password_hash": hashed,
-        "role": role,                # <- CRITICAL: always saved in DB document!
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "is_active": True,
-    }
-    res = db[COLL].insert_one(doc)
-    return str(res.inserted_id)
+    try:
+        payload = LoginSchema(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"success": False, "errors": e.errors()}), 400
 
-def verify_password(user: dict, password: str):
-    return check_password_hash(user["password_hash"], password)
+    user = authenticate(payload.username, payload.password)
+    if not user:
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
+
+    token = create_access_token(
+        identity=user["username"],
+        additional_claims={"role": user["role"]}
+    )
+    return jsonify({
+        "success": True,
+        "message": "Login successful",
+        "access_token": token,
+        "user": {"username": user["username"], "role": user.get("role", "teacher")}
+    }), 200

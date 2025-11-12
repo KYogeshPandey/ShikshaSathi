@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, request, jsonify
+﻿from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import create_access_token
 from pydantic import ValidationError
 from app.schemas.auth_schema import RegisterSchema, LoginSchema
@@ -6,24 +6,15 @@ from app.services.auth_service import register_user, authenticate
 
 bp = Blueprint('auth', __name__)
 
-@bp.route('/register', methods=['POST'])
-def register():
-    try:
-        payload = RegisterSchema(**request.get_json())
-    except ValidationError as e:
-        return jsonify({"success": False, "errors": e.errors()}), 400
-
-    user_id, err = register_user(
-        payload.username, payload.email, payload.password, payload.role
-    )
-    if err:
-        return jsonify({"success": False, "message": err}), 409
-
-    return jsonify({"success": True, "user_id": user_id}), 201
-
-# ==== ADD THIS LOGIN ROUTE BELOW ====
-@bp.route('/login', methods=['POST'])
+@bp.route('/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
+
     try:
         payload = LoginSchema(**request.get_json())
     except ValidationError as e:

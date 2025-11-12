@@ -1,6 +1,6 @@
-from datetime import datetime
 from app.core.db import get_db
 from bson import ObjectId
+from datetime import datetime
 
 COLL = "teachers"
 
@@ -8,11 +8,14 @@ def create_teacher(data: dict):
     db = get_db()
     doc = {
         "name": data["name"],
-        "email": data["email"],
-        "classroom_ids": data.get("classroom_ids", []),
+        "email": data.get("email"),
+        "phone": data.get("phone"),
+        "role": data.get("role", "teacher"),
+        "assigned_classrooms": data.get("assigned_classrooms", []),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True,
+        # ... 추가 fields jo tumhe chahiye ...
     }
     res = db[COLL].insert_one(doc)
     return str(res.inserted_id)
@@ -20,7 +23,7 @@ def create_teacher(data: dict):
 def list_teachers():
     db = get_db()
     result = []
-    for t in db[COLL].find({}):
+    for t in db[COLL].find({"is_active": True}):
         t["_id"] = str(t["_id"])
         result.append(t)
     return result
@@ -43,16 +46,16 @@ def delete_teacher(tid: str):
     db = get_db()
     db[COLL].delete_one({"_id": ObjectId(tid)})
 
-def assign_classroom(tid: str, classroom_id: str):
+def assign_classroom(tid: str, cid: str):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(tid)},
-        {"$addToSet": {"classroom_ids": classroom_id}, "$set": {"updated_at": datetime.utcnow()}}
+        {"$addToSet": {"assigned_classrooms": cid}, "$set": {"updated_at": datetime.utcnow()}}
     )
 
-def remove_classroom(tid: str, classroom_id: str):
+def remove_classroom(tid: str, cid: str):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(tid)},
-        {"$pull": {"classroom_ids": classroom_id}, "$set": {"updated_at": datetime.utcnow()}}
+        {"$pull": {"assigned_classrooms": cid}, "$set": {"updated_at": datetime.utcnow()}}
     )

@@ -1,26 +1,28 @@
-from datetime import datetime
 from app.core.db import get_db
 from bson import ObjectId
+from datetime import datetime
 
 COLL = "attendance"
 
 def create_attendance(data: dict):
     db = get_db()
-    data['created_at'] = datetime.utcnow()
-    data['updated_at'] = datetime.utcnow()
-    res = db[COLL].insert_one(data)
+    doc = {
+        "student_id": data["student_id"],         # should be string or ObjectId
+        "classroom_id": data["classroom_id"],
+        "date": data["date"],                     # should be a string ISO, e.g. "2025-11-12"
+        "status": data.get("status", "present"),  # present/absent/late or whatever enum you want
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    res = db[COLL].insert_one(doc)
     return str(res.inserted_id)
 
-def list_attendance(filter_params=None):
+def list_attendance(filters: dict = None):
     db = get_db()
     q = {}
-    if filter_params:
-        if filter_params.get("student_id"):
-            q["student_id"] = filter_params["student_id"]
-        if filter_params.get("classroom_id"):
-            q["classroom_id"] = filter_params["classroom_id"]
-        if filter_params.get("date"):
-            q["date"] = filter_params["date"]
+    if filters:
+        for k, v in filters.items():
+            if v: q[k] = v
     result = []
     for a in db[COLL].find(q):
         a["_id"] = str(a["_id"])
@@ -30,8 +32,7 @@ def list_attendance(filter_params=None):
 def get_attendance(aid: str):
     db = get_db()
     doc = db[COLL].find_one({"_id": ObjectId(aid)})
-    if doc:
-        doc["_id"] = str(doc["_id"])
+    if doc: doc["_id"] = str(doc["_id"])
     return doc
 
 def update_attendance(aid: str, data: dict):
