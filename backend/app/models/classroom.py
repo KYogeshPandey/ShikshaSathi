@@ -1,17 +1,16 @@
-from datetime import datetime
 from app.core.db import get_db
 from bson import ObjectId
+from datetime import datetime
 
 COLL = "classrooms"
 
 def create_classroom(data: dict):
     db = get_db()
-    # "student_ids" from data, else default to empty list
     doc = {
         "name": data["name"],
         "code": data.get("code") or data["name"].replace(" ", "_").lower(),
         "teacher": data.get("teacher"),
-        "student_ids": data.get("student_ids", []),  # <- best-practice!
+        "student_ids": data.get("student_ids", []),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True,

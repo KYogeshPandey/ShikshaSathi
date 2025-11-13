@@ -14,7 +14,6 @@ def login():
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response, 200
-
     try:
         payload = LoginSchema(**request.get_json())
     except ValidationError as e:
@@ -34,3 +33,15 @@ def login():
         "access_token": token,
         "user": {"username": user["username"], "role": user.get("role", "teacher")}
     }), 200
+
+# Register endpoint (easy add-on)
+@bp.route('/register', methods=['POST'])
+def register():
+    try:
+        payload = RegisterSchema(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"success": False, "errors": e.errors()}), 400
+    user_id, err = register_user(payload.username, payload.email, payload.password, payload.role)
+    if err:
+        return jsonify({"success": False, "message": err}), 409
+    return jsonify({"success": True, "id": user_id}), 201

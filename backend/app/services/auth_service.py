@@ -1,7 +1,6 @@
 from app.models.user import find_by_username, create_user, verify_password
 
 def register_user(username: str, email: str, password: str, role: str):
-    # Check if username is already taken
     existing = find_by_username(username)
     if existing:
         return None, "Username already exists"

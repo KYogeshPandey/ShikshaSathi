@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, EmailStr
 
 class RegisterSchema(BaseModel):
     username: str = Field(min_length=3, max_length=32)

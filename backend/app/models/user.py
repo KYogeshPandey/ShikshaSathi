@@ -1,6 +1,7 @@
+from app.core.db import get_db
+from bson import ObjectId
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.core.db import get_db
 
 COLL = "users"
 
@@ -15,7 +16,7 @@ def create_user(username: str, email: str, password: str, role: str = "teacher")
         "username": username,
         "email": email,
         "password_hash": hashed,
-        "role": role,                # <- CRITICAL: always saved in DB document!
+        "role": role,    # role string stored in db!
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True,

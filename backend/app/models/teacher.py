@@ -11,11 +11,11 @@ def create_teacher(data: dict):
         "email": data.get("email"),
         "phone": data.get("phone"),
         "role": data.get("role", "teacher"),
-        "assigned_classrooms": data.get("assigned_classrooms", []),
+        "assigned_classrooms": data.get("classroom_ids", []),  # always store as list of str IDs
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True,
-        # ... 추가 fields jo tumhe chahiye ...
+        # add aur fields as per requirement
     }
     res = db[COLL].insert_one(doc)
     return str(res.inserted_id)

@@ -23,7 +23,6 @@ def list_students(classroom_id=None):
     q = {"is_active": True}
     if classroom_id:
         q["classroom_id"] = classroom_id
-    # List all, skip passwords/emails if you want, show id as string
     result = []
     for s in db[COLL].find(q):
         s["_id"] = str(s["_id"])

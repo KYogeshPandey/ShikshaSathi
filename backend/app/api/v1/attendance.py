@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from app.schemas.attendance_schema import AttendanceCreate
 from app.services.attendance_service import (
     add_attendance, get_all_attendance, get_attendance_by_id,
-    update_attendance_data, delete_attendance_data
+    update_attendance_data, delete_attendance_data, get_attendance_stats
 )
 from app.utils.auth import requires_roles
 
@@ -48,7 +48,6 @@ def _create_attendance_route():
         payload = AttendanceCreate(**request.get_json())
     except ValidationError as e:
         return jsonify({"success": False, "errors": e.errors()}), 400
-
     aid = add_attendance(payload.dict())
     return jsonify({"success": True, "id": aid}), 201
 
@@ -90,3 +89,14 @@ def delete_attendance_route(aid):
 def _delete_attendance_route(aid):
     delete_attendance_data(aid)
     return jsonify({"success": True}), 200
+
+@bp.route("/stats", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def attendance_stats_route():
+    date_from = request.args.get("from")
+    date_to = request.args.get("to")
+    classroom_id = request.args.get("classroom_id")
+    student_id = request.args.get("student_id")
+    stats = get_attendance_stats(date_from, date_to, classroom_id, student_id)
+    return jsonify({"success": True, "data": stats}), 200

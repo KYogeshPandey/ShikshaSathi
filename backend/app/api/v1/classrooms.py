@@ -3,9 +3,9 @@ from flask_jwt_extended import jwt_required
 from pydantic import ValidationError
 from app.schemas.classroom_schema import ClassroomCreate
 from app.services.classroom_service import (
-    add_classroom, get_all_classrooms,
-    get_classroom_by_id, update_classroom_data, delete_classroom_data,
-    assign_students, unassign_students, list_students_in_classroom
+    add_classroom, get_all_classrooms, get_classroom_by_id,
+    update_classroom_data, delete_classroom_data, assign_students,
+    unassign_students, list_students_in_classroom
 )
 from app.utils.auth import requires_roles
 

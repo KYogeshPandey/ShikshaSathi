@@ -17,3 +17,7 @@ def update_attendance_data(aid: str, data: dict):
 def delete_attendance_data(aid: str):
     from app.models.attendance import delete_attendance
     delete_attendance(aid)
+
+def get_attendance_stats(date_from=None, date_to=None, classroom_id=None, student_id=None):
+    from app.models.attendance import aggregate_attendance_stats
+    return aggregate_attendance_stats(date_from, date_to, classroom_id, student_id)
