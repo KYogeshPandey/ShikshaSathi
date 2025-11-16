@@ -1,38 +1,11 @@
-.App {
-  text-align: center;
+.react-calendar-heatmap .react-calendar-heatmap-week > rect {
+  width: 16px !important;
+  height: 16px !important;
+  stroke-width: 1 !important;
 }
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+.react-calendar-heatmap .color-github-1    { fill: #ebedf0; }
+.react-calendar-heatmap .color-github-2    { fill: #85e89d; }
+.react-calendar-heatmap .color-github-3    { fill: #34d058; }
+.react-calendar-heatmap .color-github-4    { fill: #216e39; }
+.react-calendar-heatmap .color-empty       { fill: #f3f3f3; }
+.react-calendar-heatmap text { font-size: 7px !important; }
