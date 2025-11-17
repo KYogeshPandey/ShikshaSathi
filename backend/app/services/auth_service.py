@@ -1,16 +1,27 @@
-from app.models.user import find_by_username, create_user, verify_password
+from werkzeug.security import check_password_hash
+from ..core.db import get_db
 
-def register_user(username: str, email: str, password: str, role: str):
-    existing = find_by_username(username)
-    if existing:
-        return None, "Username already exists"
-    # Pass role to create_user (must be handled there too!)
-    user_id = create_user(username, email, password, role)
-    return user_id, None
 
 def authenticate(username: str, password: str):
-    user = find_by_username(username)
-    if not user or not verify_password(user, password):
+    """
+    Validate username/password against MongoDB users collection.
+
+    Returns:
+        dict with user public data if valid, else None.
+    """
+    db = get_db()
+    user = db.users.find_one({"username": username})
+
+    if not user:
         return None
-    # user["role"] should always exist if registration & create_user set it
-    return user
+
+    if not check_password_hash(user.get("password_hash", ""), password):
+        return None
+
+    return {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "role": user.get("role", "student"),
+        "email": user.get("email", ""),
+        "name": user.get("name", user["username"]),
+    }

@@ -1,5 +1,5 @@
+// frontend/src/pages/Admin/AdminDashboard.jsx
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import {
   PieChart,
   Pie,
@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import CalendarHeatmap from "react-calendar-heatmap";
 import "react-calendar-heatmap/dist/styles.css";
+import { api } from "../../api/api";
 
 const COLORS = ["#34D399", "#F87171", "#FBBF24", "#60A5FA"];
 
@@ -31,7 +32,7 @@ function exportToCSV(data, fileName = "export.csv") {
   a.click();
 }
 
-export default function AdminDashboard({ token }) {
+export default function AdminDashboard() {
   const [classes, setClasses] = useState([]);
   const [classroom, setClassroom] = useState("");
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
@@ -43,18 +44,14 @@ export default function AdminDashboard({ token }) {
   const [subjectStats, setSubjectStats] = useState([]);
   const [error, setError] = useState("");
 
-  // ✅ Get token from localStorage if not passed as prop
-  const authToken = token || localStorage.getItem("token");
-
   // ----- Load class list -----
   useEffect(() => {
-    if (!authToken) return;
     setError("");
-    axios
-      .get("/api/v1/classrooms/")
+    api
+      .get("/classrooms/")
       .then((res) => setClasses(res.data.data || []))
       .catch(() => setError("Could not fetch classes"));
-  }, [authToken]);
+  }, []);
 
   // ----- Load subjects for selected class -----
   useEffect(() => {
@@ -62,8 +59,8 @@ export default function AdminDashboard({ token }) {
       setSubjects([]);
       return;
     }
-    axios
-      .get(`/api/v1/classrooms/${encodeURIComponent(classroom)}`)
+    api
+      .get(`/classrooms/${encodeURIComponent(classroom)}`)
       .then((res) => setSubjects(res.data.data?.subjects || []))
       .catch(() => setSubjects([]));
   }, [classroom]);
@@ -80,19 +77,19 @@ export default function AdminDashboard({ token }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroom, dateRange.from, dateRange.to]);
 
-  function buildStatsUrl() {
-    let url = "/api/v1/attendance/stats?";
-    if (classroom) url += `classroom_id=${encodeURIComponent(classroom)}&`;
-    if (dateRange.from) url += `from=${dateRange.from}&`;
-    if (dateRange.to) url += `to=${dateRange.to}`;
-    return url;
+  function buildStatsParams() {
+    const params = {};
+    if (classroom) params.classroom_id = classroom;
+    if (dateRange.from) params.from = dateRange.from;
+    if (dateRange.to) params.to = dateRange.to;
+    return params;
   }
 
   function fetchStats() {
     setLoading(true);
     setError("");
-    axios
-      .get(buildStatsUrl())
+    api
+      .get("/attendance/stats", { params: buildStatsParams() })
       .then((res) => setStats(res.data.data || []))
       .catch(() => setError("Could not fetch analytics"))
       .finally(() => setLoading(false));
@@ -103,19 +100,15 @@ export default function AdminDashboard({ token }) {
       setLeaderboard([]);
       return;
     }
-    let url = `/api/v1/attendance/stats?classroom_id=${encodeURIComponent(
-      classroom
-    )}`;
-    if (dateRange.from) url += `&from=${dateRange.from}`;
-    if (dateRange.to) url += `&to=${dateRange.to}`;
+    const params = buildStatsParams();
 
-    axios
-      .get(url)
+    api
+      .get("/attendance/stats", { params })
       .then((res) => {
         const sorted = (res.data.data || [])
           .slice()
           .sort(
-            (a, b) => (b.attendance_percent || 0) - (a.attendance_percent || 0)
+            (a, b) => (b.attendance_percent || 0) - (a.attendance_percent || 0),
           );
         setLeaderboard(sorted.slice(0, 5));
       })
@@ -127,14 +120,15 @@ export default function AdminDashboard({ token }) {
       setSubjectStats([]);
       return;
     }
-    let url = `/api/v1/attendance/subject_stats?classroom_id=${encodeURIComponent(
-      classroom
-    )}&subject=${encodeURIComponent(subject)}`;
-    if (dateRange.from) url += `&from=${dateRange.from}`;
-    if (dateRange.to) url += `&to=${dateRange.to}`;
+    const params = {
+      classroom_id: classroom,
+      subject,
+    };
+    if (dateRange.from) params.from = dateRange.from;
+    if (dateRange.to) params.to = dateRange.to;
 
-    axios
-      .get(url)
+    api
+      .get("/attendance/subject_stats", { params })
       .then((res) => setSubjectStats(res.data.data || []))
       .catch(() => setSubjectStats([]));
   }
@@ -160,73 +154,105 @@ export default function AdminDashboard({ token }) {
     }));
 
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 p-6">
+      {/* Top strip */}
+      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+            Admin Analytics Dashboard
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Live overview of class-wise attendance, trends and top performers.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs md:text-sm text-slate-500 bg-white/60 backdrop-blur shadow-sm px-3 py-2 rounded-full">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" />
+          Backend status: <span className="font-semibold text-emerald-600">Online</span>
+        </div>
+      </div>
+
       {error && (
-        <div className="mb-4 bg-red-100 text-red-800 border border-red-200 px-4 py-2 rounded text-center font-semibold">
+        <div className="mb-4 bg-red-50 text-red-800 border border-red-200 px-4 py-2 rounded text-center font-semibold">
           {error}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-4 mb-5">
-        <select
-          className="px-3 py-2 rounded border shadow"
-          value={classroom}
-          onChange={(e) => setClassroom(e.target.value)}
-        >
-          <option value="">All Classes</option>
-          {classes.map((cls) => (
-            <option key={cls._id || cls.name} value={cls._id || cls.name}>
-              {cls.name}
-            </option>
-          ))}
-        </select>
+      <div className="bg-white/80 backdrop-blur border border-slate-100 rounded-xl shadow-sm p-4 mb-6 flex flex-wrap items-center gap-4">
+        <div className="flex flex-col">
+          <span className="text-xs text-slate-500 mb-1">Class</span>
+          <select
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={classroom}
+            onChange={(e) => setClassroom(e.target.value)}
+          >
+            <option value="">All Classes</option>
+            {classes.map((cls) => (
+              <option key={cls._id || cls.name} value={cls._id || cls.name}>
+                {cls.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <input
-          type="date"
-          className="px-2 py-1 border rounded"
-          value={dateRange.from}
-          onChange={(e) =>
-            setDateRange((r) => ({ ...r, from: e.target.value }))
-          }
-        />
-        <input
-          type="date"
-          className="px-2 py-1 border rounded"
-          value={dateRange.to}
-          onChange={(e) => setDateRange((r) => ({ ...r, to: e.target.value }))
-          }
-        />
+        <div className="flex flex-col">
+          <span className="text-xs text-slate-500 mb-1">From</span>
+          <input
+            type="date"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={dateRange.from}
+            onChange={(e) =>
+              setDateRange((r) => ({ ...r, from: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="flex flex-col">
+          <span className="text-xs text-slate-500 mb-1">To</span>
+          <input
+            type="date"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={dateRange.to}
+            onChange={(e) =>
+              setDateRange((r) => ({ ...r, to: e.target.value }))
+            }
+          />
+        </div>
+
         <button
-          className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-800 ml-5"
+          className="mt-4 md:mt-6 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition disabled:bg-slate-400 ml-auto"
           onClick={() => exportToCSV(stats, "attendance.csv")}
           disabled={!stats.length}
         >
-          Export CSV
+          Export Attendance CSV
         </button>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white shadow rounded p-5 text-center">
-          <div className="text-xs font-bold text-gray-500 mb-1">
+        <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
+          <div className="text-xs font-semibold text-slate-500 mb-1">
             Total Students
           </div>
-          <div className="text-3xl font-bold text-indigo-700">{total}</div>
+          <div className="text-3xl font-extrabold text-indigo-700">{total}</div>
         </div>
-        <div className="bg-white shadow rounded p-5 text-center">
-          <div className="text-xs font-bold text-gray-500 mb-1">Present</div>
-          <div className="text-3xl text-green-600">{totalPresent}</div>
+        <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
+          <div className="text-xs font-semibold text-slate-500 mb-1">Present</div>
+          <div className="text-3xl font-extrabold text-emerald-500">
+            {totalPresent}
+          </div>
         </div>
-        <div className="bg-white shadow rounded p-5 text-center">
-          <div className="text-xs font-bold text-gray-500 mb-1">Absent</div>
-          <div className="text-3xl text-red-400">{totalAbsent}</div>
+        <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
+          <div className="text-xs font-semibold text-slate-500 mb-1">Absent</div>
+          <div className="text-3xl font-extrabold text-red-400">
+            {totalAbsent}
+          </div>
         </div>
-        <div className="bg-white shadow rounded p-5 text-center">
-          <div className="text-xs font-bold text-gray-500 mb-1">
+        <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
+          <div className="text-xs font-semibold text-slate-500 mb-1">
             Overall Rate
           </div>
-          <div className="text-3xl text-yellow-600">
+          <div className="text-3xl font-extrabold text-amber-500">
             {overallRate.toFixed(2)}%
           </div>
         </div>
@@ -235,9 +261,11 @@ export default function AdminDashboard({ token }) {
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         {/* Pie + Legend */}
-        <div className="bg-white rounded shadow p-4 flex flex-col md:flex-row items-center">
+        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col md:flex-row items-center border border-slate-100">
           <div className="flex-1">
-            <div className="mb-2 font-semibold">Attendance Pie</div>
+            <div className="mb-2 font-semibold text-slate-700">
+              Attendance Distribution
+            </div>
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie
@@ -261,7 +289,7 @@ export default function AdminDashboard({ token }) {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="ml-8 flex flex-col items-start space-y-2 border-l pl-4">
+          <div className="ml-6 flex flex-col items-start space-y-2 border-l pl-4">
             {pieData.map((item, idx) => (
               <div key={`pie-legend-${item.name}`} className="flex items-center">
                 <span
@@ -274,7 +302,7 @@ export default function AdminDashboard({ token }) {
                     marginRight: 7,
                   }}
                 />
-                <span className="text-sm text-gray-700 font-bold">
+                <span className="text-sm text-slate-700 font-semibold">
                   {item.name}: {item.value}
                 </span>
               </div>
@@ -283,8 +311,10 @@ export default function AdminDashboard({ token }) {
         </div>
 
         {/* Bar chart */}
-        <div className="bg-white rounded shadow p-4">
-          <div className="mb-2 font-semibold">Bar Chart (Student-wise)</div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-100">
+          <div className="mb-2 font-semibold text-slate-700">
+            Student-wise Attendance
+          </div>
           <ResponsiveContainer
             width="100%"
             minWidth={220}
@@ -327,7 +357,7 @@ export default function AdminDashboard({ token }) {
       </div>
 
       {/* Heatmap */}
-      <div className="bg-white rounded shadow p-6 mb-8 flex">
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-8 flex border border-slate-100">
         <div
           style={{
             minWidth: 140,
@@ -357,11 +387,13 @@ export default function AdminDashboard({ token }) {
       </div>
 
       {/* Subject-wise */}
-      <div className="bg-white border rounded shadow p-4 mb-8">
+      <div className="bg-white border border-slate-100 rounded-xl shadow-sm p-4 mb-8">
         <div className="mb-2 flex items-center gap-4">
-          <span className="font-semibold">Subject-wise Analytics</span>
+          <span className="font-semibold text-slate-700">
+            Subject-wise Analytics
+          </span>
           <select
-            className="border px-2 py-1 rounded"
+            className="border border-slate-200 px-2 py-1 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           >
@@ -374,12 +406,12 @@ export default function AdminDashboard({ token }) {
           </select>
           <button
             onClick={fetchSubjectStats}
-            className="bg-indigo-600 text-white px-3 py-1 rounded"
+            className="bg-indigo-600 text-white px-3 py-1 rounded-lg"
           >
             Fetch
           </button>
           <button
-            className="ml-2 bg-blue-500 text-white px-3 py-1 rounded"
+            className="ml-2 bg-blue-500 text-white px-3 py-1 rounded-lg"
             onClick={() => exportToCSV(subjectStats, "subjectwise.csv")}
             disabled={!subjectStats.length}
           >
@@ -387,9 +419,9 @@ export default function AdminDashboard({ token }) {
           </button>
         </div>
         {subjectStats.length > 0 && (
-          <table className="w-full text-center mt-2">
+          <table className="w-full text-center mt-2 text-sm">
             <thead>
-              <tr className="bg-gray-100">
+              <tr className="bg-slate-100">
                 <th className="py-1">Student ID</th>
                 <th className="py-1">Present</th>
                 <th className="py-1">Absent</th>
@@ -411,18 +443,18 @@ export default function AdminDashboard({ token }) {
           </table>
         )}
         {subjectStats.length === 0 && (
-          <div className="text-gray-400 mt-2">No data…</div>
+          <div className="text-gray-400 mt-2 text-sm">No data…</div>
         )}
       </div>
 
       {/* Leaderboard */}
-      <div className="bg-white border rounded shadow p-4 mb-8">
-        <div className="font-semibold mb-2">
+      <div className="bg-white border border-slate-100 rounded-xl shadow-sm p-4 mb-8">
+        <div className="font-semibold mb-2 text-slate-700">
           Top Performers (Attendance %)
         </div>
-        <table className="w-full text-center">
+        <table className="w-full text-center text-sm">
           <thead>
-            <tr className="bg-gray-100">
+            <tr className="bg-slate-100">
               <th className="py-1">#</th>
               <th className="py-1">Student ID</th>
               <th className="py-1">Present</th>

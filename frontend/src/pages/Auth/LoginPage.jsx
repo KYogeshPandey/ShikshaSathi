@@ -1,41 +1,46 @@
-import React, { useState } from "react";
-import axios from "axios";
+// frontend/src/pages/Auth/LoginPage.jsx
+import { useState, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { loginRequest } from "../../api/api";
+import { AuthContext } from "../../context/AuthContext";
 
-function Login({ setToken, setRole, setUserName }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+export default function LoginPage() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:5000/api/v1/auth/login", {
-        username,
-        password
-      });
+      const res = await loginRequest({ username, password });
 
       const token = res.data.access_token;
-      localStorage.setItem('token', token);
-      
       const role = res.data.user?.role;
       const userName = res.data.user?.username;
-      
-      localStorage.setItem('erpRole', role);
-      localStorage.setItem('erpUserName', userName);
 
-      setToken(token);
-      setRole(role);
-      setUserName(userName);
+      const userData = { username: userName, role };
+      login(userData, token);
+
+      // Backwards compatibility with old localStorage keys
+      localStorage.setItem("erpRole", role);
+      localStorage.setItem("erpUserName", userName);
 
       console.log("✅ Login successful!");
 
+      // Redirect by role
+      if (role === "admin") navigate("/admin");
+      else if (role === "teacher") navigate("/teacher");
+      else navigate("/student");
     } catch (err) {
       console.error("❌ Login error:", err);
-      
+
       if (err.response) {
         const errorMsg = err.response.data?.message || "Invalid credentials";
         setError(errorMsg);
@@ -62,7 +67,7 @@ function Login({ setToken, setRole, setUserName }) {
 
         <input
           value={username}
-          onChange={e => setUsername(e.target.value)}
+          onChange={(e) => setUsername(e.target.value)}
           placeholder="Username"
           className="w-full px-4 py-3 mb-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
           required
@@ -71,7 +76,7 @@ function Login({ setToken, setRole, setUserName }) {
 
         <input
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           type="password"
           placeholder="Password"
           className="w-full px-4 py-3 mb-6 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -89,7 +94,9 @@ function Login({ setToken, setRole, setUserName }) {
 
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-center text-red-700 font-medium text-sm">{error}</p>
+            <p className="text-center text-red-700 font-medium text-sm">
+              {error}
+            </p>
           </div>
         )}
 
@@ -100,5 +107,3 @@ function Login({ setToken, setRole, setUserName }) {
     </div>
   );
 }
-
-export default Login;

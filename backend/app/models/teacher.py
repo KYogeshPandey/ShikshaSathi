@@ -1,8 +1,9 @@
-from app.core.db import get_db
+from ..core.db import get_db
 from bson import ObjectId
 from datetime import datetime
 
 COLL = "teachers"
+
 
 def create_teacher(data: dict):
     db = get_db()
@@ -11,14 +12,15 @@ def create_teacher(data: dict):
         "email": data.get("email"),
         "phone": data.get("phone"),
         "role": data.get("role", "teacher"),
-        "assigned_classrooms": data.get("classroom_ids", []),  # always store as list of str IDs
+        # always store as list of str IDs
+        "assigned_classrooms": data.get("classroom_ids", []),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True,
-        # add aur fields as per requirement
     }
     res = db[COLL].insert_one(doc)
     return str(res.inserted_id)
+
 
 def list_teachers():
     db = get_db()
@@ -28,6 +30,7 @@ def list_teachers():
         result.append(t)
     return result
 
+
 def get_teacher(tid: str):
     db = get_db()
     doc = db[COLL].find_one({"_id": ObjectId(tid)})
@@ -35,27 +38,37 @@ def get_teacher(tid: str):
         doc["_id"] = str(doc["_id"])
     return doc
 
+
 def update_teacher(tid: str, data: dict):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(tid)},
-        {"$set": {**data, "updated_at": datetime.utcnow()}}
+        {"$set": {**(data or {}), "updated_at": datetime.utcnow()}},
     )
+
 
 def delete_teacher(tid: str):
     db = get_db()
     db[COLL].delete_one({"_id": ObjectId(tid)})
 
+
 def assign_classroom(tid: str, cid: str):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(tid)},
-        {"$addToSet": {"assigned_classrooms": cid}, "$set": {"updated_at": datetime.utcnow()}}
+        {
+            "$addToSet": {"assigned_classrooms": cid},
+            "$set": {"updated_at": datetime.utcnow()},
+        },
     )
+
 
 def remove_classroom(tid: str, cid: str):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(tid)},
-        {"$pull": {"assigned_classrooms": cid}, "$set": {"updated_at": datetime.utcnow()}}
+        {
+            "$pull": {"assigned_classrooms": cid},
+            "$set": {"updated_at": datetime.utcnow()},
+        },
     )

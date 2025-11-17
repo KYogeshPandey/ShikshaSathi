@@ -1,8 +1,9 @@
-from app.core.db import get_db
+from ..core.db import get_db
 from bson import ObjectId
 from datetime import datetime
 
 COLL = "classrooms"
+
 
 def create_classroom(data: dict):
     db = get_db()
@@ -18,6 +19,7 @@ def create_classroom(data: dict):
     res = db[COLL].insert_one(doc)
     return str(res.inserted_id)
 
+
 def list_classrooms():
     db = get_db()
     result = []
@@ -26,6 +28,7 @@ def list_classrooms():
         result.append(c)
     return result
 
+
 def get_classroom(cid: str):
     db = get_db()
     doc = db[COLL].find_one({"_id": ObjectId(cid)})
@@ -33,34 +36,46 @@ def get_classroom(cid: str):
         doc["_id"] = str(doc["_id"])
     return doc
 
+
 def update_classroom(cid: str, data: dict):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(cid)},
-        {"$set": {**data, "updated_at": datetime.utcnow()}}
+        {"$set": {**(data or {}), "updated_at": datetime.utcnow()}},
     )
+
 
 def delete_classroom(cid: str):
     db = get_db()
     db[COLL].delete_one({"_id": ObjectId(cid)})
 
+
 def add_students_to_classroom(classroom_id: str, student_ids: list):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(classroom_id)},
-        {"$addToSet": {"student_ids": {"$each": student_ids}},
-         "$set": {"updated_at": datetime.utcnow()}}
+        {
+            "$addToSet": {"student_ids": {"$each": student_ids}},
+            "$set": {"updated_at": datetime.utcnow()},
+        },
     )
+
 
 def remove_students_from_classroom(classroom_id: str, student_ids: list):
     db = get_db()
     db[COLL].update_one(
         {"_id": ObjectId(classroom_id)},
-        {"$pullAll": {"student_ids": student_ids},
-         "$set": {"updated_at": datetime.utcnow()}}
+        {
+            "$pullAll": {"student_ids": student_ids},
+            "$set": {"updated_at": datetime.utcnow()},
+        },
     )
+
 
 def get_students_of_classroom(classroom_id: str):
     db = get_db()
-    classroom = db[COLL].find_one({"_id": ObjectId(classroom_id)}, {"student_ids": 1})
+    classroom = db[COLL].find_one(
+        {"_id": ObjectId(classroom_id)},
+        {"student_ids": 1},
+    )
     return classroom.get("student_ids", []) if classroom else []

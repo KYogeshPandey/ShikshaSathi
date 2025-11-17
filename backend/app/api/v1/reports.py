@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from app.utils.auth import requires_roles   # role-based security
-from app.core.db import get_db
+from ...utils.auth import requires_roles
+from ...core.db import get_db
 from bson import ObjectId
 
 bp = Blueprint("attendance_report", __name__)
+
 
 @bp.route("/report", methods=["GET"])
 @jwt_required()
@@ -30,9 +31,9 @@ def attendance_report():
     absent = total - present
     per_day = [
         {
-            "date": rec["date"],
-            "present": rec["present"],
-            "remarks": rec.get("remarks", "")
+            "date": rec.get("date"),
+            "present": rec.get("present"),
+            "remarks": rec.get("remarks", ""),
         }
         for rec in sorted(records, key=lambda x: x.get("date", ""))
     ]
@@ -46,7 +47,7 @@ def attendance_report():
         "absent": absent,
         "total": total,
         "attendance_percent": round(percent, 2),
-        "details": per_day
+        "details": per_day,
     }
     return jsonify({"success": True, "data": result}), 200
 
@@ -59,7 +60,12 @@ def classroom_monthly_leaderboard():
     month = request.args.get("month")  # "2025-11" format
 
     if not classroom_id or not month:
-        return jsonify({"success": False, "msg": "classroom_id and month required"}), 400
+        return (
+            jsonify(
+                {"success": False, "msg": "classroom_id and month required"},
+            ),
+            400,
+        )
 
     db = get_db()
     try:
@@ -69,6 +75,7 @@ def classroom_monthly_leaderboard():
 
     if not classroom:
         return jsonify({"success": False, "msg": "Classroom not found"}), 404
+
     student_ids = classroom.get("student_ids", [])
     if not student_ids:
         return jsonify({"success": False, "msg": "No students in classroom"}), 404
@@ -78,19 +85,21 @@ def classroom_monthly_leaderboard():
         q = {
             "student_id": student_id,
             "classroom_id": classroom_id,
-            "date": {"$regex": f"^{month}"}
+            "date": {"$regex": f"^{month}"},
         }
         records = list(db["attendance"].find(q))
         total = len(records)
         present = sum(1 for x in records if x.get("present"))
         percent = (present / total * 100) if total else 0
 
-        report.append({
-            "student_id": student_id,
-            "present": present,
-            "total": total,
-            "attendance_percent": round(percent, 2)
-        })
+        report.append(
+            {
+                "student_id": student_id,
+                "present": present,
+                "total": total,
+                "attendance_percent": round(percent, 2),
+            }
+        )
 
     report.sort(key=lambda x: x["attendance_percent"], reverse=True)
     return jsonify({"success": True, "leaderboard": report}), 200
