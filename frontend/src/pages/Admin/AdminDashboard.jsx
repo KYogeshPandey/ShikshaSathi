@@ -130,7 +130,10 @@ export default function AdminDashboard() {
     api
       .get("/attendance/subject_stats", { params })
       .then((res) => setSubjectStats(res.data.data || []))
-      .catch(() => setSubjectStats([]));
+      .catch((err) => {
+        console.warn("subject_stats API not implemented or failed", err);
+        setSubjectStats([]);
+      });
   }
 
   const total = stats.length;
@@ -167,7 +170,8 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-2 text-xs md:text-sm text-slate-500 bg-white/60 backdrop-blur shadow-sm px-3 py-2 rounded-full">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" />
-          Backend status: <span className="font-semibold text-emerald-600">Online</span>
+          Backend status:{" "}
+          <span className="font-semibold text-emerald-600">Online</span>
         </div>
       </div>
 
@@ -237,13 +241,17 @@ export default function AdminDashboard() {
           <div className="text-3xl font-extrabold text-indigo-700">{total}</div>
         </div>
         <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
-          <div className="text-xs font-semibold text-slate-500 mb-1">Present</div>
+          <div className="text-xs font-semibold text-slate-500 mb-1">
+            Present
+          </div>
           <div className="text-3xl font-extrabold text-emerald-500">
             {totalPresent}
           </div>
         </div>
         <div className="bg-white/90 backdrop-blur shadow-sm rounded-xl p-4 text-center border border-slate-100">
-          <div className="text-xs font-semibold text-slate-500 mb-1">Absent</div>
+          <div className="text-xs font-semibold text-slate-500 mb-1">
+            Absent
+          </div>
           <div className="text-3xl font-extrabold text-red-400">
             {totalAbsent}
           </div>

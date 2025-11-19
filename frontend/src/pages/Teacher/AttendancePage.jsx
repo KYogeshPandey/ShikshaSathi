@@ -2,7 +2,19 @@
 import React, { useEffect, useState } from "react";
 import { api, saveBulkAttendance } from "../../api/api";
 
-export default function AttendancePage() {
+function getStudentKey(s, index) {
+  // Try multiple possible fields, last fallback: stable index-based id
+  return (
+    s._id ||           // Mongo _id
+    s.student_id ||    // if backend already sends this
+    s.roll_no ||       // roll number
+    s.rollNumber ||
+    s.username ||
+    `student-${index}`
+  );
+}
+
+export default function AttendancePage({ onBack }) {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -20,7 +32,7 @@ export default function AttendancePage() {
       .catch(() => setMessage("Could not fetch classes"));
   }, []);
 
-  // Load students for selected class (demo: /students/ filter UI-level)
+  // Load students for selected class
   useEffect(() => {
     if (!selectedClass) {
       setStudents([]);
@@ -30,17 +42,18 @@ export default function AttendancePage() {
     setLoadingStudents(true);
     setMessage("");
     api
-      .get("/students/", {
-        // future: params: { classroom_id: selectedClass }
-      })
+      .get("/students/") // future: params: { classroom_id: selectedClass }
       .then((res) => {
         const list = (res.data.data || []).filter(
           (s) => !s.classroom_id || s.classroom_id === selectedClass,
         );
         setStudents(list);
+
+        // Default sab ko present + consistent keys
         const initial = {};
-        list.forEach((s) => {
-          initial[s._id || s.roll_no || s.rollNumber || s.username] = "present";
+        list.forEach((s, idx) => {
+          const key = getStudentKey(s, idx);
+          initial[key] = "present";
         });
         setStatusMap(initial);
       })
@@ -60,15 +73,18 @@ export default function AttendancePage() {
     setSaving(true);
     setMessage("");
 
-    const payload = students.map((s) => {
-      const key = s._id || s.roll_no || s.rollNumber || s.username;
+    const payload = students.map((s, idx) => {
+      const key = getStudentKey(s, idx);
+
       return {
-        student_id: key,
+        student_id: key, // ab kabhi undefined nahi hoga
         classroom_id: selectedClass,
         date,
         status: statusMap[key] || "present",
       };
     });
+
+    console.log("DEBUG payload going to /attendance/manual:", payload);
 
     try {
       const res = await saveBulkAttendance(payload);
@@ -88,6 +104,17 @@ export default function AttendancePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-emerald-50 to-slate-50 p-6">
       <div className="max-w-5xl mx-auto">
+        {/* Top bar with Back button */}
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm text-sky-700 hover:text-sky-900 underline"
+          >
+            ← Back to Teacher Dashboard
+          </button>
+        </div>
+
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -188,7 +215,7 @@ export default function AttendancePage() {
                 </thead>
                 <tbody>
                   {students.map((s, idx) => {
-                    const key = s._id || s.roll_no || s.rollNumber || s.username;
+                    const key = getStudentKey(s, idx);
                     const status = statusMap[key] || "present";
                     const isPresent = status === "present";
                     return (
@@ -226,8 +253,8 @@ export default function AttendancePage() {
 
           <div className="mt-3 text-[11px] text-slate-400">
             Status toggle karne ke baad &quot;Save Attendance&quot; dabao – data
-            ab MongoDB me persist ho raha hai aur dashboards isi collection se
-            read kar sakte hain.
+            MongoDB me persist ho raha hai aur dashboards isi collection se read
+            kar sakte hain.
           </div>
         </div>
       </div>

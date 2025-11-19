@@ -1,6 +1,7 @@
 // frontend/src/pages/Teacher/TeacherDashboard.jsx
 import React, { useEffect, useState } from "react";
 import { api } from "../../api/api";
+import AttendancePage from "../Teacher/AttendancePage";
 
 function exportToCSV(data, fileName = "attendance.csv") {
   if (!data?.length) return;
@@ -17,12 +18,15 @@ function exportToCSV(data, fileName = "attendance.csv") {
 }
 
 export default function TeacherDashboard() {
+  const [mode, setMode] = useState("overview"); // "overview" or "attendance"
+
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // ---- Hooks always at top ----
   // Load all classes assigned to teacher (currently same as all classrooms)
   useEffect(() => {
     setError("");
@@ -56,6 +60,11 @@ export default function TeacherDashboard() {
       : attendance.reduce((a, b) => a + (b.attendance_percent || 0), 0) /
         totalStudents;
 
+  // ---- Conditional render (after hooks) ----
+  if (mode === "attendance") {
+    return <AttendancePage onBack={() => setMode("overview")} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-slate-50 p-6">
       {/* Header */}
@@ -68,9 +77,18 @@ export default function TeacherDashboard() {
             Quickly review class-wise attendance and export reports.
           </p>
         </div>
-        <div className="bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-sm text-xs text-slate-600 flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-          <span>Focus: Live class attendance overview</span>
+        <div className="flex flex-col md:flex-row gap-3 items-center">
+          <div className="bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-sm text-xs text-slate-600 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Focus: Live class attendance overview</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMode("attendance")}
+            className="bg-emerald-600 text-white text-xs md:text-sm px-4 py-2 rounded-full shadow hover:bg-emerald-700 transition"
+          >
+            Mark Today&apos;s Attendance
+          </button>
         </div>
       </div>
 
@@ -189,20 +207,6 @@ export default function TeacherDashboard() {
             </table>
           </div>
         )}
-      </div>
-
-      {/* Future actions */}
-      <div className="mt-8 flex flex-col gap-2 items-start text-sm">
-        <button
-          className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 transition shadow disabled:bg-slate-400"
-          disabled
-        >
-          Mark / Approve Today&apos;s Attendance (coming soon)
-        </button>
-        <span className="text-xs text-slate-400">
-          *Later you can integrate face recognition or manual marking from this
-          button.
-        </span>
       </div>
     </div>
   );

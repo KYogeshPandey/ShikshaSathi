@@ -1,17 +1,12 @@
 // frontend/src/pages/Auth/LoginPage.jsx
-import { useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from "react";
 import { loginRequest } from "../../api/api";
-import { AuthContext } from "../../context/AuthContext";
 
-export default function LoginPage() {
+function Login({ setToken, setRole, setUserName }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const { login } = useContext(AuthContext);
-  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -25,19 +20,17 @@ export default function LoginPage() {
       const role = res.data.user?.role;
       const userName = res.data.user?.username;
 
-      const userData = { username: userName, role };
-      login(userData, token);
-
-      // Backwards compatibility with old localStorage keys
+      // localStorage keys (ERP wale bhi)
+      localStorage.setItem("token", token);
+      localStorage.setItem("erpToken", token);
       localStorage.setItem("erpRole", role);
       localStorage.setItem("erpUserName", userName);
 
-      console.log("✅ Login successful!");
+      setToken(token);
+      setRole(role);
+      setUserName(userName);
 
-      // Redirect by role
-      if (role === "admin") navigate("/admin");
-      else if (role === "teacher") navigate("/teacher");
-      else navigate("/student");
+      console.log("✅ Login successful!");
     } catch (err) {
       console.error("❌ Login error:", err);
 
@@ -107,3 +100,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+export default Login;

@@ -20,9 +20,9 @@ def create_attendance(data: dict):
     db = get_db()
     status = _normalize_status(data)
     doc = {
-        "student_id": data["student_id"],
-        "classroom_id": data["classroom_id"],
-        "date": data["date"],  # "YYYY-MM-DD"
+        "student_id": str(data["student_id"]),
+        "classroom_id": str(data["classroom_id"]),
+        "date": str(data["date"]),  # "YYYY-MM-DD"
         "status": status,
         "marked_by": data.get("marked_by"),
         "remarks": data.get("remarks"),
@@ -36,45 +36,59 @@ def create_attendance(data: dict):
 def bulk_upsert_attendance(records: list[dict], marked_by: str | None = None) -> int:
     """
     For each record, upsert by (student_id, classroom_id, date).
+    Invalid records (missing ids/date) ko skip karega, lekin
+    clearly console mein print karega.
     """
     db = get_db()
     count = 0
     now = datetime.utcnow()
 
-    for data in records:
-        try:
-            status = _normalize_status(data)
-            student_id = data["student_id"]
-            classroom_id = data["classroom_id"]
-            date = data["date"]
+    print("DEBUG bulk_upsert_attendance got", len(records), "records")
 
-            update_doc = {
+    for i, data in enumerate(records):
+        student_id = data.get("student_id")
+        classroom_id = data.get("classroom_id")
+        date = data.get("date")
+
+        # Agar required fields nahi hain to skip + log
+        if not student_id or not classroom_id or not date:
+            print(f"SKIP[{i}] invalid record:", data)
+            continue
+
+        # Sab ko string bana dete hain (ObjectId / int ho to bhi)
+        student_id = str(student_id)
+        classroom_id = str(classroom_id)
+        date = str(date)
+
+        status = _normalize_status(data)
+
+        update_doc = {
+            "student_id": student_id,
+            "classroom_id": classroom_id,
+            "date": date,
+            "status": status,
+            "marked_by": marked_by or data.get("marked_by"),
+            "remarks": data.get("remarks"),
+            "updated_at": now,
+        }
+
+        db[COLL].update_one(
+            {
                 "student_id": student_id,
                 "classroom_id": classroom_id,
                 "date": date,
-                "status": status,
-                "marked_by": marked_by or data.get("marked_by"),
-                "remarks": data.get("remarks"),
-                "updated_at": now,
-            }
+            },
+            {
+                "$set": update_doc,
+                "$setOnInsert": {"created_at": now},
+            },
+            upsert=True,
+        )
 
-            db[COLL].update_one(
-                {
-                    "student_id": student_id,
-                    "classroom_id": classroom_id,
-                    "date": date,
-                },
-                {
-                    "$set": update_doc,
-                    "$setOnInsert": {"created_at": now},
-                },
-                upsert=True,
-            )
-            count += 1
-        except KeyError:
-            # skip invalid record silently
-            continue
+        # Yahan tak aa gaya matlab record valid tha
+        count += 1
 
+    print("DEBUG bulk_upsert_attendance saved", count, "records")
     return count
 
 
