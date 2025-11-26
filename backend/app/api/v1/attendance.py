@@ -1,148 +1,129 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
-from ...services.attendance_service import save_bulk_attendance
+from ...services.attendance_service import (
+    save_bulk_attendance,
+    get_attendance_stats,
+    get_all_attendance,
+    get_attendance_detail,   # NEW
+    export_attendance_report # NEW
+)
 from ...utils.auth import requires_roles
 
 bp = Blueprint("attendance", __name__)
 
-
 @bp.route("/stats", methods=["GET"])
-def get_stats():
+@jwt_required()
+@requires_roles("admin", "teacher")
+def get_stats_route():
+    """
+    Get aggregated attendance stats.
+    Query params: classroom_id, from, to
+    """
     try:
-        print("✅ GET /api/v1/attendance/stats called")
-
         classroom_id = request.args.get("classroom_id")
-        db = current_app.config.get("db")
+        date_from = request.args.get("from")
+        date_to = request.args.get("to")
 
-        # ===== Try from MongoDB if available =====
-        if db is not None:
-            try:
-                query = {}
-                if classroom_id:
-                    query["classroom_id"] = classroom_id
-                attendance_data = list(db["attendance"].find(query, {"_id": 0}))
-                return jsonify({"success": True, "data": attendance_data}), 200
-            except Exception as e:
-                print(f"⚠️ MongoDB error in get_stats, falling back to demo: {e}")
-
-        # ===== DEMO fallback data =====
-        demo_data = [
-            {
-                "student_id": "S001",
-                "present_days": 22,
-                "absent_days": 2,
-                "attendance_percent": 91.7,
-            },
-            {
-                "student_id": "S002",
-                "present_days": 18,
-                "absent_days": 6,
-                "attendance_percent": 75.0,
-            },
-            {
-                "student_id": "S003",
-                "present_days": 20,
-                "absent_days": 4,
-                "attendance_percent": 83.3,
-            },
-        ]
-        return jsonify({"success": True, "data": demo_data}), 200
-
-    except Exception as e:
-        print(f"❌ Error in get_stats: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return (
-            jsonify({"success": False, "message": "Internal server error"}),
-            500,
+        stats = get_attendance_stats(
+            date_from=date_from,
+            date_to=date_to,
+            classroom_id=classroom_id
         )
+        return jsonify({"success": True, "data": stats}), 200
+    except Exception as e:
+        print(f"❌ Error in get_stats_route: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
 
+@bp.route("/detail", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def get_attendance_detail_route():
+    """
+    Returns daily/detailed attendance records for one class or one student.
+    Query params: classroom_id, student_id, from, to
+    """
+    try:
+        classroom_id = request.args.get("classroom_id")
+        student_id = request.args.get("student_id")
+        date_from = request.args.get("from")
+        date_to = request.args.get("to")
+
+        detail = get_attendance_detail(
+            classroom_id=classroom_id,
+            student_id=student_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return jsonify({"success": True, "data": detail}), 200
+    except Exception as e:
+        print(f"❌ Error in get_attendance_detail_route: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@bp.route("/export", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def export_attendance_route():
+    """
+    Download/export attendance table as CSV (for one class or student)
+    """
+    try:
+        classroom_id = request.args.get("classroom_id")
+        student_id = request.args.get("student_id")
+        date_from = request.args.get("from")
+        date_to = request.args.get("to")
+        fmt = request.args.get("format", "json")  # "csv" or "json"
+
+        file_path = export_attendance_report(
+            classroom_id=classroom_id,
+            student_id=student_id,
+            date_from=date_from,
+            date_to=date_to,
+            fmt=fmt
+        )
+        return send_file(file_path, as_attachment=True)
+    except Exception as e:
+        print(f"❌ Error in export_attendance_route: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
 
 @bp.route("/mystats", methods=["GET"])
-def my_stats():
+@jwt_required()
+def my_stats_route():
+    """
+    Get aggregated stats for the logged-in user (student).
+    """
     try:
-        identity = get_jwt_identity()  # token ho to use hoga, warna None
-        print(f"✅ GET /api/v1/attendance/mystats for user: {identity}")
-
-        db = current_app.config.get("db")
-
-        # ===== Try from MongoDB if available =====
-        if db is not None and identity:
-            try:
-                attendance = list(
-                    db["attendance"].find({"username": identity}, {"_id": 0})
-                )
-                return jsonify({"success": True, "data": attendance}), 200
-            except Exception as e:
-                print(f"⚠️ MongoDB error in my_stats, falling back to demo: {e}")
-
-        # ===== DEMO fallback =====
-        demo_attendance = [
-            {"date": "2025-11-01", "status": "present"},
-            {"date": "2025-11-02", "status": "present"},
-            {"date": "2025-11-03", "status": "absent"},
-            {"date": "2025-11-04", "status": "present"},
-            {"date": "2025-11-05", "status": "present"},
-        ]
-        return jsonify({"success": True, "data": demo_attendance}), 200
-
+        user_id = get_jwt_identity()
+        stats = get_attendance_stats(student_id=user_id)
+        return jsonify({"success": True, "data": stats}), 200
     except Exception as e:
-        print(f"❌ Error in my_stats: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return (
-            jsonify({"success": False, "message": "Internal server error"}),
-            500,
-        )
-
+        print(f"❌ Error in my_stats_route: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
 
 @bp.route("/manual", methods=["POST"])
 @jwt_required()
 @requires_roles("teacher", "admin")
-def save_manual_attendance():
+def save_manual_attendance_route():
     """
-    POST /api/v1/attendance/manual
-    Body: [
-      { "student_id": "...", "classroom_id": "...", "date": "YYYY-MM-DD", "status": "present"/"absent" },
-      ...
-    ]
+    Bulk save attendance.
+    Body: [ { "student_id": "...", "classroom_id": "...", "date": "...", "status": "..." } ]
     """
     try:
         data = request.get_json() or []
-
         if not isinstance(data, list) or not data:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "Body must be a non-empty list of attendance records",
-                    }
-                ),
-                400,
-            )
+            return jsonify({
+                "success": False,
+                "message": "Body must be a non-empty list"
+            }), 400
 
         identity = get_jwt_identity()
         saved_count = save_bulk_attendance(data, marked_by=identity)
 
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "message": "Attendance saved successfully",
-                    "saved": saved_count,
-                }
-            ),
-            200,
-        )
+        return jsonify({
+            "success": True,
+            "message": "Attendance saved successfully",
+            "saved": saved_count
+        }), 200
 
     except Exception as e:
-        print(f"❌ Error in save_manual_attendance: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return (
-            jsonify({"success": False, "message": "Internal server error"}),
-            500,
-        )
+        print(f"❌ Error in save_manual_attendance_route: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500

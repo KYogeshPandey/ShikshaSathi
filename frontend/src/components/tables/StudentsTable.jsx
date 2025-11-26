@@ -1,32 +1,31 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { fetchStudents } from "../../api/api";
 
 function Students({ token, onLogout }) {
   const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function getStudents() {
-      const jwt = token || localStorage.getItem("erpToken");
-      if (!jwt) return;
+      setLoading(true);
       try {
-        const res = await axios.get('http://localhost:5000/api/v1/students/', {
-          headers: { Authorization: `Bearer ${jwt}` }
-        });
-        setStudents(res.data.data);
+        const res = await fetchStudents();
+        setStudents(res.data.data || []);
       } catch (err) {
-        if (err.response && err.response.status === 401) {
+        if (err.response && err.response.status === 401 && onLogout) {
           alert("Session expired, please login again...");
-          localStorage.removeItem('erpToken');
-          if (onLogout) onLogout(); // App.js me token reset karo
+          onLogout();
         }
       }
+      setLoading(false);
     }
     getStudents();
-  }, [token, onLogout]);
+  }, [onLogout]);
 
   return (
     <div>
       <h2>All Students</h2>
+      {loading && <div>Loading...</div>}
       <ul>
         {students.map(s => (
           <li key={s._id}>{s.name} ({s.roll_no})</li>
@@ -35,5 +34,4 @@ function Students({ token, onLogout }) {
     </div>
   );
 }
-
 export default Students;

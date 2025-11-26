@@ -1,59 +1,44 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { fetchClassrooms, createClassroom } from "../../api/api";
 
 function Classrooms({ token, onLogout }) {
   const [list, setList] = useState([]);
   const [form, setForm] = useState({ name: "", code: "" });
+  const [loading, setLoading] = useState(false);
 
-  // GET classrooms
-  useEffect(() => {
-    async function getClassrooms() {
-      const jwt = token || localStorage.getItem("erpToken");
-      if (!jwt) return;
-      try {
-        const res = await axios.get('http://localhost:5000/api/v1/classrooms/', {
-          headers: { Authorization: `Bearer ${jwt}` }
-        });
-        setList(res.data.data);
-      } catch (err) {
-        if (err.response && err.response.status === 401) {
-          alert("Session expired, login again!");
-          localStorage.removeItem('erpToken');
-          if (onLogout) onLogout();
-        }
+  useEffect(() => { getClassrooms(); }, []);
+  async function getClassrooms() {
+    setLoading(true);
+    try {
+      const res = await fetchClassrooms();
+      setList(res.data.data || []);
+    } catch (err) {
+      if (err.response && err.response.status === 401 && onLogout) {
+        alert("Session expired, login again!"); onLogout();
       }
     }
-    getClassrooms();
-  }, [token, onLogout]);
+    setLoading(false);
+  }
 
-  // ADD classroom
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const jwt = token || localStorage.getItem("erpToken");
     try {
-      await axios.post('http://localhost:5000/api/v1/classrooms/', form, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
+      await createClassroom(form);
       alert("Classroom added");
       setForm({ name: "", code: "" });
-      // Refresh list
-      const res = await axios.get('http://localhost:5000/api/v1/classrooms/', {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      setList(res.data.data);
+      getClassrooms();
     } catch {
-      alert("Failed to add! Check data and JWT.");
+      alert("Failed to add! Check data.");
     }
   };
 
   return (
     <div>
       <h2>Classrooms List</h2>
+      {loading && <div>Loading...</div>}
       <ul>
         {list.map(c => (
-          <li key={c._id}>
-            {c.code} — {c.name}
-          </li>
+          <li key={c._id}>{c.code} — {c.name}</li>
         ))}
       </ul>
       <h3>Add Classroom</h3>
@@ -65,5 +50,4 @@ function Classrooms({ token, onLogout }) {
     </div>
   );
 }
-
 export default Classrooms;

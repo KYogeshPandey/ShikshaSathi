@@ -1,12 +1,17 @@
 // frontend/src/pages/Auth/LoginPage.jsx
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { loginRequest } from "../../api/api";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../context/AuthContext";
 
-function Login({ setToken, setRole, setUserName }) {
+export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const { login } = useContext(AuthContext);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -17,20 +22,17 @@ function Login({ setToken, setRole, setUserName }) {
       const res = await loginRequest({ username, password });
 
       const token = res.data.access_token;
-      const role = res.data.user?.role;
-      const userName = res.data.user?.username;
+      const user = res.data.user; // { role, username, ... }
 
-      // localStorage keys (ERP wale bhi)
-      localStorage.setItem("token", token);
-      localStorage.setItem("erpToken", token);
-      localStorage.setItem("erpRole", role);
-      localStorage.setItem("erpUserName", userName);
+      login(user, token); // context auth update
 
-      setToken(token);
-      setRole(role);
-      setUserName(userName);
+      // Redirect based on role
+      if (user.role === "admin") navigate("/admin", { replace: true });
+      else if (user.role === "teacher") navigate("/teacher", { replace: true });
+      else if (user.role === "student") navigate("/student", { replace: true });
+      else navigate("/", { replace: true });
 
-      console.log("✅ Login successful!");
+      // Optional: can show toast "Login Successful"
     } catch (err) {
       console.error("❌ Login error:", err);
 
@@ -100,5 +102,3 @@ function Login({ setToken, setRole, setUserName }) {
     </div>
   );
 }
-
-export default Login;

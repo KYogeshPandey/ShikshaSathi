@@ -1,32 +1,31 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { fetchTeachers } from "../../api/api";
 
 function Teachers({ token, onLogout }) {
   const [teachers, setTeachers] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function getTeachers() {
-      const jwt = token || localStorage.getItem("erpToken");
-      if (!jwt) return;
+      setLoading(true);
       try {
-        const res = await axios.get('http://localhost:5000/api/v1/teachers/', {
-          headers: { Authorization: `Bearer ${jwt}` }
-        });
-        setTeachers(res.data.data);
+        const res = await fetchTeachers();
+        setTeachers(res.data.data || []);
       } catch (err) {
-        if (err.response && err.response.status === 401) {
+        if (err.response && err.response.status === 401 && onLogout) {
           alert("Session expired, login again!");
-          localStorage.removeItem('erpToken');
-          if (onLogout) onLogout();
+          onLogout();
         }
       }
+      setLoading(false);
     }
     getTeachers();
-  }, [token, onLogout]);
+  }, [onLogout]);
 
   return (
     <div>
       <h2>All Teachers</h2>
+      {loading && <div>Loading...</div>}
       <ul>
         {teachers.map(t => (
           <li key={t._id}>{t.name} ({t.email})</li>
@@ -35,5 +34,4 @@ function Teachers({ token, onLogout }) {
     </div>
   );
 }
-
 export default Teachers;

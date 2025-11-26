@@ -1,10 +1,9 @@
-// frontend/src/context/AuthContext.jsx
-import { createContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 
 export const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);   // { username, role }
+  const [user, setUser] = useState(null); // { username, role }
   const [token, setToken] = useState(null);
 
   useEffect(() => {
@@ -16,6 +15,7 @@ export function AuthProvider({ children }) {
         setUser(JSON.parse(savedUser));
       } catch {
         setUser(null);
+        localStorage.removeItem("user");
       }
     }
   }, []);
@@ -41,4 +41,9 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+// 👇️ YEH CUSTOM HOOK ZARUR BANAAO!
+export function useAuth() {
+  return useContext(AuthContext);
 }

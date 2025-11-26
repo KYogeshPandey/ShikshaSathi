@@ -3,6 +3,10 @@ from functools import wraps
 from flask import jsonify
 
 def requires_roles(*roles):
+    """
+    Decorator to protect route: Only users whose JWT roles match any of *roles can access.
+    Usage: @requires_roles("admin", "teacher")
+    """
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):

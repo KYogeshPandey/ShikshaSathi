@@ -1,57 +1,47 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { fetchAttendanceStats, saveBulkAttendance } from "../../api/api"; // Use api.js for future proofing
 
 function Attendance({ token, onLogout }) {
   const [list, setList] = useState([]);
   const [form, setForm] = useState({ student_id: "", classroom_id: "", date: "", status: "present" });
+  const [loading, setLoading] = useState(false);
 
-  // Attendance GET
-  useEffect(() => {
-    async function getAttendance() {
-      const jwt = token || localStorage.getItem("erpToken");
-      if (!jwt) return;
-      try {
-        const res = await axios.get('http://localhost:5000/api/v1/attendance/', {
-          headers: { Authorization: `Bearer ${jwt}` }
-        });
-        setList(res.data.data);
-      } catch (err) {
-        if (err.response && err.response.status === 401) {
-          alert("Session expired, login again!");
-          localStorage.removeItem('erpToken');
-          if (onLogout) onLogout();
-        }
+  // GET attendance (uses api.js for consistency)
+  async function getAttendance() {
+    setLoading(true);
+    try {
+      const res = await fetchAttendanceStats(); // No params = fetch all
+      setList(res.data.data || []);
+    } catch (err) {
+      if (err.response && err.response.status === 401 && onLogout) {
+        alert("Session expired, login again!"); onLogout();
       }
     }
-    getAttendance();
-  }, [token, onLogout]);
+    setLoading(false);
+  }
 
-  // Attendance ADD
+  useEffect(() => { getAttendance(); }, []);
+
+  // ADD attendance
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const jwt = token || localStorage.getItem("erpToken");
     try {
-      await axios.post('http://localhost:5000/api/v1/attendance/', form, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
+      await saveBulkAttendance([{ ...form }]); // Use single-record as bulk
       alert("Attendance added");
       setForm({ student_id: "", classroom_id: "", date: "", status: "present" });
-      // Refresh list
-      const res = await axios.get('http://localhost:5000/api/v1/attendance/', {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      setList(res.data.data);
+      getAttendance();
     } catch (err) {
-      alert("Failed to add! Check data and token.");
+      alert("Failed to add! Check data.");
     }
   };
 
   return (
     <div>
       <h2>Attendance List</h2>
+      {loading && <div>Loading...</div>}
       <ul>
         {list.map(a => (
-          <li key={a._id}>
+          <li key={a._id || [a.student_id, a.date].join("-")}>
             {a.date}: Student {a.student_id} - {a.status} (Class {a.classroom_id})
           </li>
         ))}
@@ -64,12 +54,10 @@ function Attendance({ token, onLogout }) {
         <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
           <option value="present">Present</option>
           <option value="absent">Absent</option>
-          <option value="late">Late</option>
         </select>
         <button type="submit">Add</button>
       </form>
     </div>
   );
 }
-
 export default Attendance;
