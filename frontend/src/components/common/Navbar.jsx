@@ -1,9 +1,16 @@
 import React from "react";
 import { Menu, Bell, User } from "lucide-react";
-import { useAuth } from "../../context/AuthContext"; // <-- Fix here
+import { useAuth } from "../../context/AuthContext"; 
 
 export default function Navbar({ onMenuClick }) {
-  const { user, logout } = useAuth(); // Context from AuthProvider
+  const { user, logout } = useAuth(); 
+
+  // Logic to set title based on role
+  const getDashboardTitle = () => {
+    if (user?.role === 'teacher') return "Teacher Dashboard";
+    if (user?.role === 'student') return "Student Dashboard";
+    return "Admin Dashboard"; // Default fallback
+  };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 sticky top-0 z-30">
@@ -15,8 +22,9 @@ export default function Navbar({ onMenuClick }) {
         >
           <Menu size={24} />
         </button>
+        {/* Dynamic Title */}
         <h2 className="text-lg font-semibold text-slate-800 hidden sm:block">
-          Admin Dashboard
+          {getDashboardTitle()}
         </h2>
       </div>
 
@@ -28,8 +36,8 @@ export default function Navbar({ onMenuClick }) {
         </button>
         <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
           <div className="text-right hidden md:block">
-            <p className="text-sm font-medium text-slate-700">{user?.username || "Admin"}</p>
-            <p className="text-xs text-slate-500 capitalize">{user?.role || "Administrator"}</p>
+            <p className="text-sm font-medium text-slate-700">{user?.username || "User"}</p>
+            <p className="text-xs text-slate-500 capitalize">{user?.role || "Guest"}</p>
           </div>
           <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 border border-indigo-200">
             <User size={20} />

@@ -1,10 +1,9 @@
-# backend/app/models/subject.py
 from ..core.db import get_db
 from bson import ObjectId
 from datetime import datetime
+from typing import Optional, List
 
 COLL = "subjects"
-
 
 def create_subject(data: dict) -> str:
     """
@@ -14,6 +13,7 @@ def create_subject(data: dict) -> str:
     db = get_db()
 
     name = data["name"].strip()
+    # Auto-generate code if not provided
     code = (data.get("code") or name).strip().replace(" ", "_").lower()
 
     doc = {
@@ -34,9 +34,9 @@ def create_subject(data: dict) -> str:
     return str(res.inserted_id)
 
 
-def list_subjects(filters: dict | None = None) -> list[dict]:
+def list_subjects(filters: Optional[dict] = None) -> List[dict]:
     db = get_db()
-    q: dict = {"is_active": True}
+    q = {"is_active": True}
 
     if filters:
         # allow filtering by standard, classroom_id, code
@@ -46,20 +46,21 @@ def list_subjects(filters: dict | None = None) -> list[dict]:
 
         classroom_id = filters.get("classroom_id")
         if classroom_id:
+            # MongoDB automatically matches if 'classroom_id' exists inside the 'classroom_ids' array
             q["classroom_ids"] = classroom_id
 
         code = filters.get("code")
         if code:
             q["code"] = code
 
-    result: list[dict] = []
+    result = []
     for s in db[COLL].find(q):
         s["_id"] = str(s["_id"])
         result.append(s)
     return result
 
 
-def get_subject(sid: str) -> dict | None:
+def get_subject(sid: str) -> Optional[dict]:
     db = get_db()
     try:
         oid = ObjectId(sid)
@@ -81,8 +82,16 @@ def update_subject(sid: str, data: dict) -> None:
     except Exception:
         return
 
+    # FIX: Remove _id from data if it exists to prevent immutable field error
+    if "_id" in data:
+        del data["_id"]
+
     payload = {**data, "updated_at": datetime.utcnow()}
-    db[COLL].update_one({"_id": oid}, {"$set": payload})
+    
+    db[COLL].update_one(
+        {"_id": oid}, 
+        {"$set": payload}
+    )
 
 
 def delete_subject(sid: str, hard: bool = False) -> None:

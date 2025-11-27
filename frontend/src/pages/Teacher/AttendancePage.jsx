@@ -1,73 +1,104 @@
-// frontend/src/pages/Teacher/AttendancePage.jsx
 import React, { useEffect, useState } from "react";
-import { api, saveBulkAttendance } from "../../api/api";
+import { fetchMyClasses, fetchClassDetails, fetchDailyAttendance, saveBulkAttendance } from "../../api/api";
+import Loader from "../../components/common/loader";
 
 function getStudentKey(s, index) {
-  // Try multiple possible fields, last fallback: stable index-based id
-  return (
-    s._id ||           // Mongo _id
-    s.student_id ||    // if backend already sends this
-    s.roll_no ||       // roll number
-    s.rollNumber ||
-    s.username ||
-    `student-${index}`
-  );
+  return s._id || s.student_id || s.roll_no || `student-${index}`;
 }
 
 export default function AttendancePage({ onBack }) {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [students, setStudents] = useState([]);
+  
+  // Status and Remarks Map
   const [statusMap, setStatusMap] = useState({});
-  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [remarksMap, setRemarksMap] = useState({});
+  
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [isUpdateMode, setIsUpdateMode] = useState(false);
 
-  // Load all classes
+  // 1. Load Teacher's Classes
   useEffect(() => {
-    api
-      .get("/classrooms/")
-      .then((res) => setClasses(res.data.data || []))
+    fetchMyClasses()
+      .then((res) => {
+        setClasses(res.data || []);
+        if(res.data?.length > 0) setSelectedClass(res.data[0]._id);
+      })
       .catch(() => setMessage("Could not fetch classes"));
   }, []);
 
-  // Load students for selected class
+  // 2. Load Data (Students + Existing Attendance)
   useEffect(() => {
-    if (!selectedClass) {
+    if (!selectedClass || !date) {
       setStudents([]);
       setStatusMap({});
+      setRemarksMap({});
       return;
     }
-    setLoadingStudents(true);
+
+    setLoading(true);
     setMessage("");
-    api
-      .get("/students/") // future: params: { classroom_id: selectedClass }
-      .then((res) => {
-        const list = (res.data.data || []).filter(
-          (s) => !s.classroom_id || s.classroom_id === selectedClass,
-        );
-        setStudents(list);
+    
+    // Parallel Fetch: Class details (Students) + Daily Attendance (Existing)
+    Promise.all([
+        fetchClassDetails(selectedClass),
+        fetchDailyAttendance(selectedClass, date)
+    ])
+    .then(([classRes, attendanceRes]) => {
+        // 1. Set Student List
+        const studentList = classRes.data.students || [];
+        setStudents(studentList);
 
-        // Default sab ko present + consistent keys
-        const initial = {};
-        list.forEach((s, idx) => {
-          const key = getStudentKey(s, idx);
-          initial[key] = "present";
+        // 2. Process Existing Attendance
+        const existingRecords = attendanceRes.data || [];
+        setIsUpdateMode(existingRecords.length > 0);
+
+        const newStatusMap = {};
+        const newRemarksMap = {};
+
+        studentList.forEach((s, idx) => {
+            const key = getStudentKey(s, idx);
+            // Check if record exists for this student
+            const record = existingRecords.find(r => r.student_id === s._id);
+            
+            if (record) {
+                newStatusMap[key] = record.status; // Use saved status
+                newRemarksMap[key] = record.remarks || "";
+            } else {
+                newStatusMap[key] = "present"; // Default
+                newRemarksMap[key] = "";
+            }
         });
-        setStatusMap(initial);
-      })
-      .catch(() => setMessage("Could not fetch students for this class"))
-      .finally(() => setLoadingStudents(false));
-  }, [selectedClass]);
 
-  function toggleStatus(studentKey) {
+        setStatusMap(newStatusMap);
+        setRemarksMap(newRemarksMap);
+    })
+    .catch((err) => {
+        console.error(err);
+        setMessage("Error loading data. Please try again.");
+    })
+    .finally(() => setLoading(false));
+
+  }, [selectedClass, date]);
+
+  // Toggle Status
+  const toggleStatus = (studentKey) => {
     setStatusMap((prev) => ({
       ...prev,
       [studentKey]: prev[studentKey] === "present" ? "absent" : "present",
     }));
-  }
+  };
 
+  // Handle Remarks Change
+  const handleRemarkChange = (studentKey, text) => {
+    setRemarksMap((prev) => ({ ...prev, [studentKey]: text }));
+  };
+
+  // Submit Logic
   async function handleSave() {
     if (!selectedClass || !date || students.length === 0) return;
     setSaving(true);
@@ -75,188 +106,140 @@ export default function AttendancePage({ onBack }) {
 
     const payload = students.map((s, idx) => {
       const key = getStudentKey(s, idx);
-
       return {
-        student_id: key, // ab kabhi undefined nahi hoga
+        student_id: s._id, // Always use Mongo ID for consistency
         classroom_id: selectedClass,
         date,
         status: statusMap[key] || "present",
+        remarks: remarksMap[key] || ""
       };
     });
 
-    console.log("DEBUG payload going to /attendance/manual:", payload);
-
     try {
       const res = await saveBulkAttendance(payload);
-      const saved = res.data?.saved ?? payload.length;
-      setMessage(`✅ Attendance saved for ${saved} records.`);
+      const count = res.data?.saved || res.data?.modifiedCount || payload.length;
+      setMessage(isUpdateMode ? `✅ Updated attendance for ${count} students.` : `✅ Marked attendance for ${count} students.`);
+      setIsUpdateMode(true); // Now it's in update mode
     } catch (err) {
-      console.error("❌ Error saving attendance:", err);
-      setMessage(
-        err.response?.data?.message ||
-          "Failed to save attendance. Please try again.",
-      );
+      console.error("Save error:", err);
+      setMessage("Failed to save. Please check connection.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-emerald-50 to-slate-50 p-6">
-      <div className="max-w-5xl mx-auto">
-        {/* Top bar with Back button */}
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm text-sky-700 hover:text-sky-900 underline"
-          >
-            ← Back to Teacher Dashboard
-          </button>
-        </div>
-
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-extrabold text-sky-900 tracking-tight">
-              Mark Attendance
-            </h2>
-            <p className="text-sm text-slate-600 mt-1">
-              Select a class and date, then toggle students as present / absent.
-            </p>
-          </div>
-          <div className="bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-sm text-xs text-slate-600 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-sky-500" />
-            <span>Manual marking · Saved to database</span>
-          </div>
+        <div className="flex items-center justify-between mb-6">
+            <div>
+                <h1 className="text-2xl font-bold text-gray-800">
+                    {isUpdateMode ? "Update Attendance" : "Mark Attendance"}
+                </h1>
+                <p className="text-gray-500 text-sm">
+                    {isUpdateMode ? "Edit existing records for this date." : "Mark attendance for a new date."}
+                </p>
+            </div>
+            {onBack && (
+                 <button onClick={onBack} className="text-blue-600 text-sm hover:underline">
+                    ← Back to Dashboard
+                 </button>
+            )}
         </div>
 
+        {/* Controls */}
+        <div className="bg-white p-4 rounded-lg shadow-sm border flex gap-4 mb-6 flex-wrap items-end">
+            <div>
+                <label className="block text-xs text-gray-500 mb-1">Class</label>
+                <select 
+                    className="border rounded p-2 min-w-[200px]"
+                    value={selectedClass}
+                    onChange={(e) => setSelectedClass(e.target.value)}
+                >
+                    {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                </select>
+            </div>
+            <div>
+                <label className="block text-xs text-gray-500 mb-1">Date</label>
+                <input 
+                    type="date" 
+                    className="border rounded p-2"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                />
+            </div>
+            <div className="ml-auto">
+                 <button
+                    onClick={handleSave}
+                    disabled={saving || loading || students.length === 0}
+                    className={`px-6 py-2 rounded text-white font-bold shadow ${
+                        saving ? "bg-gray-400" : isUpdateMode ? "bg-orange-500 hover:bg-orange-600" : "bg-emerald-600 hover:bg-emerald-700"
+                    }`}
+                >
+                    {saving ? "Saving..." : isUpdateMode ? "Update Records" : "Submit"}
+                </button>
+            </div>
+        </div>
+
+        {/* Message Banner */}
         {message && (
-          <div className="mb-4 text-xs md:text-sm bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded">
-            {message}
-          </div>
+             <div className={`p-3 rounded mb-4 text-sm ${message.includes("Failed") ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                {message}
+             </div>
         )}
 
-        {/* Filters */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-6 flex flex-wrap gap-4 items-center">
-          <div className="flex flex-col">
-            <span className="text-xs text-slate-500 mb-1">Class</span>
-            <select
-              className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-            >
-              <option value="">-- Choose class --</option>
-              {classes.map((cls) => (
-                <option key={cls._id || cls.name} value={cls._id || cls.name}>
-                  {cls.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col">
-            <span className="text-xs text-slate-500 mb-1">Date</span>
-            <input
-              type="date"
-              className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-
-          <div className="mt-4 md:mt-6 text-xs text-slate-500">
-            {students.length > 0 && (
-              <span>
-                {students.length} students loaded · Click on a row to toggle
-                status.
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Students list */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold text-slate-700">
-              {selectedClass ? "Students in selected class" : "No class selected"}
+        {/* Table */}
+        {loading ? <Loader /> : students.length === 0 ? (
+            <div className="text-center text-gray-400 py-10 bg-white rounded shadow">No students found or no class selected.</div>
+        ) : (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-100 text-gray-600 uppercase text-xs">
+                        <tr>
+                            <th className="px-6 py-3">Student</th>
+                            <th className="px-6 py-3 text-center">Status</th>
+                            <th className="px-6 py-3">Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {students.map((s, idx) => {
+                            const key = getStudentKey(s, idx);
+                            const isPresent = statusMap[key] === "present";
+                            return (
+                                <tr key={key} className={`hover:bg-gray-50 transition ${!isPresent ? "bg-red-50" : ""}`}>
+                                    <td className="px-6 py-4 font-medium text-gray-700">
+                                        {s.name}
+                                        <div className="text-xs text-gray-400 font-normal">{s.roll_number || "No Roll No"}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <button 
+                                            onClick={() => toggleStatus(key)}
+                                            className={`px-4 py-1 rounded-full text-xs font-bold border transition ${
+                                                isPresent 
+                                                ? "bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200" 
+                                                : "bg-red-100 text-red-700 border-red-200 hover:bg-red-200"
+                                            }`}
+                                        >
+                                            {isPresent ? "PRESENT" : "ABSENT"}
+                                        </button>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Reason (Optional)"
+                                            className="w-full border-b border-transparent focus:border-blue-500 bg-transparent outline-none text-gray-600 placeholder-gray-300"
+                                            value={remarksMap[key] || ""}
+                                            onChange={(e) => handleRemarkChange(key, e.target.value)}
+                                        />
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
             </div>
-            <button
-              className="bg-sky-600 text-white text-sm px-4 py-2 rounded-lg shadow hover:bg-sky-700 transition disabled:bg-slate-400"
-              onClick={handleSave}
-              disabled={
-                !selectedClass || !date || students.length === 0 || saving
-              }
-            >
-              {saving ? "Saving..." : "Save Attendance"}
-            </button>
-          </div>
-
-          {loadingStudents ? (
-            <div className="text-sky-600 text-sm animate-pulse">
-              Loading students…
-            </div>
-          ) : students.length === 0 ? (
-            <div className="text-slate-400 text-sm py-4">
-              {selectedClass
-                ? "No students found for this class."
-                : "Choose a class to load students."}
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto">
-              <table className="w-full text-sm text-center">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600">
-                    <th className="py-2">#</th>
-                    <th className="py-2">Student</th>
-                    <th className="py-2">Roll</th>
-                    <th className="py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((s, idx) => {
-                    const key = getStudentKey(s, idx);
-                    const status = statusMap[key] || "present";
-                    const isPresent = status === "present";
-                    return (
-                      <tr
-                        key={key}
-                        className="border-b border-slate-50 cursor-pointer hover:bg-slate-50"
-                        onClick={() => toggleStatus(key)}
-                      >
-                        <td className="py-2">{idx + 1}</td>
-                        <td className="py-2">
-                          {s.name || s.username || s.student_id || "Student"}
-                        </td>
-                        <td className="py-2">
-                          {s.roll_no || s.rollNumber || "--"}
-                        </td>
-                        <td className="py-2">
-                          <span
-                            className={
-                              "px-3 py-1 rounded-full text-xs font-semibold " +
-                              (isPresent
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : "bg-red-50 text-red-600 border border-red-200")
-                            }
-                          >
-                            {isPresent ? "Present" : "Absent"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="mt-3 text-[11px] text-slate-400">
-            Status toggle karne ke baad &quot;Save Attendance&quot; dabao – data
-            MongoDB me persist ho raha hai aur dashboards isi collection se read
-            kar sakte hain.
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
