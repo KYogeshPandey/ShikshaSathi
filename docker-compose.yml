@@ -1,0 +1,197 @@
+name: shikshasathi
+
+# Production-shaped default stack. The legacy Flask/MongoDB backend and legacy
+# CRA source are intentionally absent. Test-only services remain behind the
+# explicit `test` profile and use a separate ephemeral PostgreSQL instance.
+
+x-backend-environment: &backend-environment
+  APP_ENV: production
+  DEBUG: "false"
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  BIOMETRIC_STORAGE_ROOT: /var/lib/shikshasathi/biometric
+  # The backend is not host-published; the frontend reverse proxy is its only
+  # ingress in this stack. If that topology changes, replace `*` with the exact
+  # trusted proxy addresses rather than exposing the backend unchanged.
+  FORWARDED_ALLOW_IPS: "*"
+
+x-backend-security: &backend-security
+  read_only: true
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:size=128m,mode=1777
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - shikshasathi_v2_postgres_data:/var/lib/postgresql/data
+    networks:
+      - shikshasathi_v2
+    stop_grace_period: 30s
+
+  # One-shot deterministic migration gate. Backend startup is blocked until
+  # Alembic reaches head successfully; downgrade is never automated.
+  migrate:
+    image: shikshasathi-backend:${SHIKSHASATHI_IMAGE_TAG:-latest}
+    build:
+      context: ./backend_v2
+      dockerfile: Dockerfile
+      target: runtime
+    restart: "no"
+    env_file:
+      - ${SHIKSHASATHI_ENV_FILE:-.env}
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - shikshasathi_v2
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+
+  backend_v2:
+    image: shikshasathi-backend:${SHIKSHASATHI_IMAGE_TAG:-latest}
+    build:
+      context: ./backend_v2
+      dockerfile: Dockerfile
+      target: runtime
+    restart: unless-stopped
+    env_file:
+      - ${SHIKSHASATHI_ENV_FILE:-.env}
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    volumes:
+      - shikshasathi_v2_biometric_data:/var/lib/shikshasathi/biometric
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - shikshasathi_v2
+    stop_grace_period: 30s
+    <<: *backend-security
+
+  frontend:
+    image: shikshasathi-frontend:${SHIKSHASATHI_IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    depends_on:
+      backend_v2:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    networks:
+      - shikshasathi_v2
+    stop_grace_period: 15s
+
+  postgres_test:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-shikshasathi_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-shikshasathi_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-test_only_password_not_a_real_credential}
+    ports:
+      - "127.0.0.1:${POSTGRES_TEST_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_TEST_USER:-shikshasathi_test} -d ${POSTGRES_TEST_DB:-shikshasathi_test}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - shikshasathi_v2
+
+  backend_v2_test:
+    profiles: ["test"]
+    build:
+      context: ./backend_v2
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      APP_ENV: testing
+      APP_NAME: ShikshaSathi API (test)
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY_TEST:-test-only-secret-key-not-a-real-credential-0000000}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-shikshasathi_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-shikshasathi_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-test_only_password_not_a_real_credential}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_TEST_USER:-shikshasathi_test}:${POSTGRES_TEST_PASSWORD:-test_only_password_not_a_real_credential}@postgres_test:5432/${POSTGRES_TEST_DB:-shikshasathi_test}
+      CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      TRUSTED_HOSTS: '["testserver","localhost","127.0.0.1"]'
+      LOGIN_RATE_LIMIT_ATTEMPTS: "1000"
+      REFRESH_TOKEN_COOKIE_SECURE: "false"
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+    command: ["sh", "-lc", "alembic upgrade head && pytest"]
+    networks:
+      - shikshasathi_v2
+
+networks:
+  shikshasathi_v2:
+    driver: bridge
+
+volumes:
+  shikshasathi_v2_postgres_data:
+  shikshasathi_v2_biometric_data:

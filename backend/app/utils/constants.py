@@ -1,0 +1,3 @@
+# Use for global app config, feature flags, env checks, etc.
+DEFAULT_PAGE_SIZE = 50
+# Add more as needed...

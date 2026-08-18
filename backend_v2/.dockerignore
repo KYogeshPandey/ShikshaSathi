@@ -1,0 +1,50 @@
+# Version control
+.git
+.gitignore
+
+# Environment files — never bake a secret into the image.
+.env
+.env.*
+!.env.example
+
+# Python bytecode / virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Test / lint / type-check caches — not needed at runtime.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Tests are included in the build context for the dedicated test target.
+# Hatch excludes app/tests from the production wheel (pyproject.toml).
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs and debug output
+*.log
+debug_*.txt
+
+# Uploaded / working data (not applicable to backend_v2 yet; kept for
+# parity with the root .gitignore's intent — see docs/AUDIT.md §1.4)
+var/biometric_data/
+*.onnx
+*.dat
+*.jpg.tmp
+*.png.tmp

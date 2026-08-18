@@ -1,0 +1,146 @@
+from flask import Blueprint, request, jsonify, send_file
+from flask_jwt_extended import jwt_required
+from ...utils.auth import requires_roles
+from ...core.db import get_db
+from bson import ObjectId
+from ...services.report_service import generate_attendance_pdf_report
+
+import tempfile
+import os
+
+bp = Blueprint("attendance_report", __name__)
+
+@bp.route("/report", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def attendance_report():
+    # ... code same as your original (no critical changes) ...
+    student_id = request.args.get("student_id")
+    classroom_id = request.args.get("classroom_id")
+    month = request.args.get("month")  # "YYYY-MM"
+    query = {}
+    if student_id:
+        query["student_id"] = student_id
+    if classroom_id:
+        query["classroom_id"] = classroom_id
+    if month:
+        query["date"] = {"$regex": f"^{month}"}
+    db = get_db()
+    records = list(db["attendance"].find(query))
+    total = len(records)
+    present = sum(1 for x in records if x.get("status") == "present")
+    absent = total - present
+    per_day = [
+        {
+            "date": rec.get("date"),
+            "status": rec.get("status"),
+            "remarks": rec.get("remarks", ""),
+        }
+        for rec in sorted(records, key=lambda x: x.get("date", ""))
+    ]
+    percent = (present / total * 100) if total else 0
+    result = {
+        "student_id": student_id,
+        "classroom_id": classroom_id,
+        "month": month,
+        "present": present,
+        "absent": absent,
+        "total": total,
+        "attendance_percent": round(percent, 2),
+        "details": per_day,
+    }
+    return jsonify({"success": True, "data": result}), 200
+
+@bp.route("/classroom_leaderboard", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def classroom_monthly_leaderboard():
+    classroom_id = request.args.get("classroom_id")
+    month = request.args.get("month")  # "YYYY-MM"
+    if not classroom_id or not month:
+        return jsonify({"success": False, "msg": "classroom_id and month required"}), 400
+    db = get_db()
+    try:
+        classroom = db["classrooms"].find_one({"_id": ObjectId(classroom_id)})
+    except Exception:
+        return jsonify({"success": False, "msg": "Invalid classroom_id"}), 400
+    if not classroom:
+        return jsonify({"success": False, "msg": "Classroom not found"}), 404
+    student_ids = classroom.get("student_ids", [])
+    if not student_ids:
+        return jsonify({"success": False, "msg": "No students in classroom"}), 404
+    report = []
+    for student_id in student_ids:
+        q = {
+            "student_id": student_id,
+            "classroom_id": classroom_id,
+            "date": {"$regex": f"^{month}"},
+        }
+        records = list(db["attendance"].find(q))
+        total = len(records)
+        present = sum(1 for x in records if x.get("status") == "present")
+        percent = (present / total * 100) if total else 0
+        report.append(
+            {
+                "student_id": student_id,
+                "present": present,
+                "total": total,
+                "attendance_percent": round(percent, 2),
+            }
+        )
+    report.sort(key=lambda x: x["attendance_percent"], reverse=True)
+    return jsonify({"success": True, "leaderboard": report}), 200
+
+# ------- [NEW] PDF Export Route -------
+@bp.route("/export/pdf", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def download_attendance_pdf():
+    """
+    Download custom PDF attendance report for a student/class/month.
+    Query: student_id, classroom_id, month
+    """
+    student_id = request.args.get("student_id")
+    classroom_id = request.args.get("classroom_id")
+    month = request.args.get("month")
+    pdf_path = generate_attendance_pdf_report(student_id, classroom_id, month)
+    if not pdf_path or not os.path.exists(pdf_path):
+        return jsonify({"success": False, "msg": "Failed to generate PDF"}), 500
+    filename = os.path.basename(pdf_path)
+    response = send_file(pdf_path, as_attachment=True, download_name=filename)
+    # Auto-delete temp PDF after sending (good for prod!)
+    @response.call_on_close
+    def cleanup():
+        try:
+            os.remove(pdf_path)
+        except Exception:
+            pass
+    return response
+
+@bp.route("/defaulters", methods=["GET"])
+@jwt_required()
+@requires_roles("admin", "teacher")
+def get_defaulters():
+    """
+    Get list of students with attendance below threshold.
+    Query params: classroom_id, threshold (default: 75)
+    """
+    try:
+        classroom_id = request.args.get("classroom_id")
+        threshold = float(request.args.get("threshold", 75))
+        
+        if not classroom_id:
+            return jsonify({"success": False, "msg": "classroom_id required"}), 400
+        
+        # Get attendance stats for the classroom
+        from ...services.attendance_service import get_attendance_stats
+        stats = get_attendance_stats(classroom_id=classroom_id)
+        
+        # Filter students below threshold
+        defaulters = [s for s in stats if s.get("attendance_percent", 0) < threshold]
+        
+        return jsonify({"success": True, "data": defaulters}), 200
+    except Exception as e:
+        print(f"❌ Error in get_defaulters: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+

@@ -1,0 +1,57 @@
+﻿__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+.env.*
+!.env.example
+*.log
+node_modules/
+dist/
+build/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+backend/static/uploads/
+backend/logs/
+*.pkl
+*.sqlite3
+*.db
+*.h5
+
+# Added in Rebuild Phase 0 audit (docs/AUDIT.md, Critical finding: leaked
+# MongoDB URI was captured in ad-hoc debug text files at repo root)
+debug_*.txt
+debug_output*.txt
+*.debug
+
+# Test / coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+.mypy_cache/
+.ruff_cache/
+
+# Biometric / uploaded media working data (student & teacher photos, face data)
+backend/app/static/uploads/
+backend/app/static/faces/
+*.jpg.tmp
+*.png.tmp
+
+# backend_v2 biometric storage root (Phase 5; docs/BIOMETRIC_DATA_POLICY.md).
+# No code writes here yet (Stage 1 is contracts/config only) — excluded now
+# so Stage 2/3 never accidentally commits real biometric data later. Matches
+# Settings.BIOMETRIC_STORAGE_ROOT's default (app/core/config.py); a
+# deployment that overrides that path to somewhere outside the repo does
+# not need this pattern at all.
+backend_v2/var/biometric_data/
+
+# Face-recognition model weights are deployer-supplied and never source artifacts.
+*.onnx
+*.dat

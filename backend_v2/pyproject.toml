@@ -1,0 +1,135 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shikshasathi-backend-v2"
+version = "0.1.0"
+description = "ShikshaSathi v2 backend — FastAPI, PostgreSQL, auth, and academic APIs."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    # Keep the supported SQLAlchemy 2.x baseline explicit for the async ORM,
+    # PostgreSQL enum mapping, and test fixtures used in this phase.
+    "sqlalchemy>=2.0.30,<2.1",
+    "asyncpg>=0.30,<0.31",
+    "alembic>=1.13,<2.0",
+    "structlog>=24.4,<25.0",
+    # --- Phase 2: identity, authentication, RBAC -----------------------
+    "pyjwt>=2.9,<3.0",
+    "argon2-cffi>=23.1,<24.0",
+    "email-validator>=2.2,<3.0",
+    # --- Phase 3: bounded CSV/XLSX academic imports --------------------
+    "python-multipart>=0.0.9,<1.0",
+    "openpyxl>=3.1,<4.0",
+    # --- Phase 5 Stage 2: biometric enrollment image validation --------
+    # Decoded-content image validation only (format/dimension/decompression-
+    # bomb/animated-frame checks) — never face detection. See
+    # app/modules/biometric_enrollment/image_validation.py's module
+    # docstring.
+    "pillow>=10.4,<13.0",
+    # --- Phase 5 Stage 3: real face detection/alignment/embedding ------
+    # opencv-python-headless: YuNet detection via cv2.FaceDetectorYN,
+    # loaded through OpenCV's own ONNX importer (ADR 0005, Accepted) —
+    # "headless" build deliberately (no GUI/X11 dependency; this runs
+    # server-side only). No onnxruntime dependency: OpenCV's DNN module
+    # parses the .onnx file itself.
+    "opencv-python-headless>=4.10,<5.0",
+    # numpy: the array representation every Stage 3 provider adapter
+    # converts DecodedImage/NormalizedFaceInput pixel bytes to/from —
+    # see app/modules/face_recognition/image_codec.py. Pulled in
+    # transitively by opencv-python-headless already; pinned explicitly
+    # here because this codebase imports it directly in several Stage 3
+    # modules, not just as an incidental OpenCV dependency.
+    "numpy>=1.26,<3.0",
+    # dlib: the embedding model this project selected
+    # (dlib_face_recognition_resnet_model_v1 — public domain; SFace and
+    # InsightFace's buffalo_l/ArcFace family were both evaluated and
+    # rejected on licensing grounds — see
+    # docs/HANDOVER_PHASE_5_STAGE_3.md). No official ONNX export exists
+    # for this model, so — unlike the detector above — this is a direct
+    # dependency on the `dlib` package itself, not onnxruntime. dlib has
+    # no pure-Python fallback and, on platforms without a matching
+    # prebuilt PyPI wheel, requires a C++ toolchain (CMake + a C++
+    # compiler) to build from source — a real, documented deployment
+    # trade-off accepted in exchange for an unambiguous, public-domain
+    # license; see docs/HANDOVER_PHASE_5_STAGE_3.md, "Known risks".
+    "dlib>=19.24,<20.0",
+    # --- Phase 8: bounded, in-memory attendance-report PDFs -----------
+    "reportlab>=4.2,<5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3,<10.0",
+    "pytest-asyncio>=1.4,<2.0",
+    "httpx>=0.27,<1.0",
+    "ruff>=0.7,<1.0",
+    "mypy>=1.13,<2.0",
+    "types-openpyxl>=3.1,<4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+exclude = ["app/tests"]
+
+# ---------------------------------------------------------------------------
+# Ruff (lint + format)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+# No blanket ignores: findings are fixed in code, not silenced here.
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+show_error_codes = true
+
+# asyncpg's bundled type information is incomplete across the version
+# range we support; this is a narrow, named exception (one third-party
+# package), not a blanket ignore of our own code.
+[[tool.mypy.overrides]]
+module = ["asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["reportlab.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["dlib"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers"
+testpaths = ["app/tests"]
+asyncio_mode = "auto"

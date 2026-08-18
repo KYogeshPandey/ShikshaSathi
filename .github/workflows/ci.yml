@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend / PostgreSQL, migrations, tests, static and dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: shikshasathi_test
+          POSTGRES_USER: shikshasathi_test
+          POSTGRES_PASSWORD: test_only_password_not_a_real_credential
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shikshasathi_test -d shikshasathi_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: testing
+      APP_NAME: ShikshaSathi API (CI)
+      DEBUG: "false"
+      SECRET_KEY: test-only-secret-key-not-a-real-credential-0000000
+      DATABASE_URL: postgresql+asyncpg://shikshasathi_test:test_only_password_not_a_real_credential@127.0.0.1:5432/shikshasathi_test
+      POSTGRES_DB: shikshasathi_test
+      POSTGRES_USER: shikshasathi_test
+      POSTGRES_PASSWORD: test_only_password_not_a_real_credential
+      CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      TRUSTED_HOSTS: '["testserver","localhost","127.0.0.1"]'
+      LOGIN_RATE_LIMIT_ATTEMPTS: "1000"
+      REFRESH_TOKEN_COOKIE_SECURE: "false"
+      BIOMETRIC_STORAGE_ROOT: /tmp/shikshasathi-ci-biometric
+    defaults:
+      run:
+        working-directory: backend_v2
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend_v2/pyproject.toml
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake
+
+      - name: Install backend and quality tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "pip-audit>=2.7,<3"
+
+      - name: Verify migration chain on fresh PostgreSQL
+        run: |
+          alembic upgrade head
+          alembic current
+
+      - name: Ruff format
+        run: ruff format --check app alembic scripts
+
+      - name: Ruff lint
+        run: ruff check app alembic scripts
+
+      - name: Scoped strict mypy (production source)
+        run: mypy app --exclude 'app/tests'
+
+      - name: Compile Python source
+        run: python -m compileall -q app alembic scripts
+
+      - name: Full backend suite
+        run: pytest
+
+      - name: Python dependency audit
+        run: pip-audit --local --skip-editable
+
+  frontend:
+    name: Frontend / typecheck, lint, tests, build and dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency audit
+        run: npm audit
+
+  images:
+    name: Production image builds and Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [backend, frontend]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate production Compose model
+        env:
+          SHIKSHASATHI_ENV_FILE: .env.example
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Build backend production image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend_v2
+          target: runtime
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend production image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          target: runtime
+          push: false
+          build-args: VITE_API_URL=/api/v1
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
