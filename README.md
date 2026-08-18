@@ -1,229 +1,608 @@
 # ShikshaSathi
 
-ShikshaSathi is a role-based school attendance system with a FastAPI/PostgreSQL
-backend and a React/TypeScript frontend. It supports academic administration,
-manual attendance, a human-supervised face-recognition workflow, student
-self-service attendance, announcements, audit logs, and bounded CSV/PDF
-reports.
+> A full-stack school administration, attendance, reporting, and role-based academic workflow platform built as a college project and evolved into a deployable MVP.
 
-The production stack is the v2 implementation:
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://shikshasathi.vercel.app)
+[![Backend](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=000)](https://shikshasathi-api.onrender.com/health/live)
+[![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=000)](frontend/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi&logoColor=fff)](backend_v2/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=fff)](docker-compose.yml)
+[![CI](https://github.com/KYogeshPandey/ShikshaSathi/actions/workflows/ci.yml/badge.svg)](https://github.com/KYogeshPandey/ShikshaSathi/actions)
+
+## Live Demo
+
+**Application:** https://shikshasathi.vercel.app
+**Backend health:** https://shikshasathi-api.onrender.com/health/live
+**Repository:** https://github.com/KYogeshPandey/ShikshaSathi
+
+The hosted demo uses a free Render backend, so the first request after inactivity can take longer while the backend wakes up.
+
+Authentication is required. Public administrator credentials are intentionally **not** stored in this repository. There is no public self-registration endpoint.
+
+---
+
+## What is ShikshaSathi?
+
+ShikshaSathi is a role-based school management platform focused on academic administration and attendance workflows.
+
+It provides separate experiences for:
+
+- **Administrators** — manage classrooms, subjects, teachers, students, assignments, timetable, announcements, bulk imports, and reports.
+- **Teachers** — view schedules, work within assigned academic scopes, and record attendance.
+- **Students** — view their dashboard, attendance information, and school announcements.
+
+The project also contains an optional biometric enrollment and face-recognition workflow. The live free-hosting deployment keeps face recognition disabled because the native `dlib` dependency and model runtime are resource intensive.
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/login-page.png" alt="ShikshaSathi secure login page">
+      <br><b>Secure Login</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/admin-dashboard.png" alt="ShikshaSathi administration dashboard">
+      <br><b>Administration Dashboard</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/timetable-management.png" alt="ShikshaSathi timetable management page">
+      <br><b>Timetable Management</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/bulk-import.png" alt="ShikshaSathi bulk import workflow">
+      <br><b>Bulk Import Workflow</b>
+    </td>
+  </tr>
+</table>
+
+The screenshots above show the live application UI. Personal account information has been redacted before publication.
+
+---
+
+## Key Features
+
+### Administration
+
+- Classroom management
+- Subject management
+- Teacher profiles
+- Student profiles
+- Teacher/classroom/subject assignments
+- Timetable management
+- School announcements
+- CSV/XLSX bulk-import workflows
+- Role-aware administration dashboard
+
+### Attendance
+
+- Manual attendance workflows
+- Teacher authorization and scope validation
+- Attendance audit trail
+- Student attendance views
+- Attendance statistics
+- Roster-based workflows
+- Recognition-attendance workflow support
+
+### Reports & Analytics
+
+- Attendance summary reports
+- Attendance detail reports
+- Defaulter identification
+- Attendance leaderboard
+- CSV exports
+- PDF exports
+- Deterministic report ordering
+- Spreadsheet formula-injection protection for CSV exports
+
+### Authentication & Security
+
+- JWT access-token authentication
+- HttpOnly refresh-token flow
+- Role-Based Access Control (RBAC)
+- Login rate limiting
+- Trusted-host validation
+- Production CORS validation
+- Request IDs
+- Secure production-cookie configuration
+- No public self-registration
+- Environment-based secret management
+- No real `.env` or private-key files committed to Git
+
+### Optional Face Recognition
+
+The codebase includes:
+
+- Biometric enrollment workflows
+- Secure ZIP validation for bulk enrollment
+- Image validation and bounded processing
+- YuNet-based face detection integration
+- `dlib` ResNet embedding integration
+- Similarity matching and ambiguity handling
+- Recognition attendance attempts
+- Model artifact integrity checks
+
+`dlib` is an **optional dependency** for the free deployment profile and is not installed in the default hosted backend image.
+
+Biometric model files, student biometric data, and real enrollment images are **not included** in the repository.
+
+---
+
+## Architecture
+
+### Production
 
 ```text
 Browser
-  -> Nginx frontend (React SPA, /api and /health reverse proxy)
-      -> FastAPI backend_v2
-          -> PostgreSQL 16
-          -> private biometric volume (optional recognition enrollment)
+  │
+  ▼
+Vercel Frontend
+React + TypeScript + Vite
+  │
+  │ /api/v1 same-origin proxy
+  ▼
+Render Backend
+FastAPI + Uvicorn
+  │
+  ▼
+Neon PostgreSQL
 ```
 
-The historical `backend/` Flask/MongoDB code remains in the repository only as
-migration history. It is not built, started, or connected by the production
-Docker Compose topology. The current `frontend/` is Vite + strict TypeScript;
-the retired Create React App implementation is not a production entrypoint.
+The frontend uses a same-origin `/api` rewrite, so the browser communicates with the Vercel domain while Vercel proxies API traffic to the Render backend.
 
-## Delivered MVP capabilities
+### Local Docker Development
 
-- Admin: classrooms, subjects, teacher/student profiles, classroom membership,
-  exact teacher assignments, timetable, announcements, bounded CSV/XLSX
-  imports, biometric enrollment administration, audit logs, and reports.
-- Teacher: assigned academic scope, manual attendance, recognition attendance,
-  announcements, and classroom/subject reports and exports.
-- Student: own profile, own attendance summary/detail and filters, timetable
-  visibility through scoped academic APIs, and announcements.
-- Reports: bounded attendance detail, defaulters including zero-record active
-  students, deterministic leaderboard, formula-safe CSV, and in-memory PDF.
-- Security: Argon2id passwords, short-lived JWT access tokens, rotating opaque
-  refresh sessions in an HttpOnly cookie, database-derived roles, exact
-  object-level attendance authorization, login throttling, explicit CORS and
-  trusted-host allow-lists, sanitized error responses, and structured logs.
+```text
+Browser
+  │
+  ▼
+Frontend / Nginx :8080
+  │
+  ▼
+FastAPI backend
+  │
+  ▼
+PostgreSQL
+```
 
-API contracts are summarized in [API_DOCS.md](API_DOCS.md). FastAPI also
-generates OpenAPI from the implemented schemas at `/docs` and `/openapi.json`
-when the backend is reached directly on a trusted internal network.
+Database migrations run through the Compose migration service before the backend becomes available.
 
-## Face recognition: scope and limitations
+---
 
-The server implements YuNet detection, landmark alignment, dlib 128-dimensional
-embeddings, candidate-scoped cosine matching, enrollment processing, and the
-recognition-attendance decision workflow. A clear `FOUND` decision writes
-attendance only through the existing attendance service. `UNKNOWN` and
-`AMBIGUOUS` never write attendance without explicit teacher confirmation from
-the authorized classroom roster.
+## Tech Stack
 
-Important limits:
+| Area | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Client data layer | TanStack Query |
+| Backend | FastAPI, Python 3.12 |
+| Validation | Pydantic / Pydantic Settings |
+| ORM | SQLAlchemy 2.x Async |
+| PostgreSQL driver | asyncpg |
+| Database migrations | Alembic |
+| Database | PostgreSQL 16 |
+| Production database | Neon PostgreSQL |
+| Authentication | JWT access tokens + refresh-token cookies |
+| Reports | CSV + ReportLab PDF |
+| Face detection | OpenCV YuNet |
+| Face embeddings | dlib ResNet — optional |
+| Local infrastructure | Docker + Docker Compose |
+| Frontend runtime | Nginx |
+| Backend runtime | Uvicorn |
+| Frontend hosting | Vercel |
+| Backend hosting | Render |
+| CI | GitHub Actions |
 
-- Model weights are not redistributed in this repository or release ZIP. The
-  deployer must independently obtain the reviewed YuNet and dlib model files,
-  mount them read-only, and preferably configure their SHA-256 values.
-- `FACE_MATCH_THRESHOLD=0.82` is a provisional structural default derived from
-  dlib distance guidance. It is not classroom-calibrated accuracy, and this
-  project makes no accuracy claim.
-- The MVP does not implement liveness/anti-spoofing or automated consent and
-  retention workflows. Human supervision remains mandatory.
-- A deployment must complete jurisdiction-specific legal/privacy review before
-  collecting student biometric data. See
-  [docs/BIOMETRIC_DATA_POLICY.md](docs/BIOMETRIC_DATA_POLICY.md).
+---
 
-## Production deployment with Docker Compose
+## Repository Structure
 
-Prerequisites: Docker Engine/Desktop with Compose v2 and an HTTPS ingress or
-load balancer for the public hostname.
+```text
+ShikshaSathi/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── backend/                 # Legacy Flask backend retained as migration reference
+├── backend_v2/              # Current / authoritative FastAPI backend
+│   ├── alembic/
+│   ├── app/
+│   ├── scripts/
+│   ├── Dockerfile
+│   ├── alembic.ini
+│   └── pyproject.toml
+├── frontend/                # Current React + TypeScript + Vite frontend
+│   ├── src/
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   └── vercel.json
+├── docs/
+├── .env.example
+├── docker-compose.yml
+├── API_DOCS.md
+└── README.md
+```
 
-1. Copy `.env.example` to `.env`.
-2. Replace every `CHANGE_ME` and `replace-me` value. Generate a unique
-   `SECRET_KEY` of at least 32 random characters and a unique database password.
-3. Set `CORS_ALLOWED_ORIGINS` to the exact public HTTPS origin and
-   `TRUSTED_HOSTS` to the public host name plus the documented probe hosts.
-4. Validate, build, migrate, and start:
+> **Important:** `backend_v2/` is the current application backend.
+> `backend/` is legacy code preserved for migration/history reference and is not used by the production deployment.
+
+---
+
+# Run Locally
+
+The recommended local setup uses Docker Compose.
+
+## Prerequisites
+
+Install:
+
+- Git
+- Docker Desktop
+- Docker Compose
+
+Verify:
 
 ```bash
-docker compose config --quiet
-docker compose build
-docker compose up -d postgres
-docker compose run --rm migrate
-docker compose up -d
+git --version
+docker --version
+docker compose version
+```
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/KYogeshPandey/ShikshaSathi.git
+cd ShikshaSathi
+```
+
+## 2. Create the Local Environment File
+
+### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+code .env
+```
+
+### Linux / macOS
+
+```bash
+cp .env.example .env
+```
+
+For local development, update at least:
+
+```env
+APP_ENV=development
+DEBUG=false
+
+SECRET_KEY=replace-with-a-unique-random-secret-at-least-32-characters
+
+CORS_ALLOWED_ORIGINS=["http://localhost:8080","http://127.0.0.1:8080"]
+TRUSTED_HOSTS=["localhost","127.0.0.1"]
+
+REFRESH_TOKEN_COOKIE_SECURE=false
+
+POSTGRES_DB=shikshasathi
+POSTGRES_USER=shikshasathi
+POSTGRES_PASSWORD=replace-with-a-unique-local-database-password
+
+FACE_RECOGNITION_PROVIDER=none
+```
+
+Do **not** commit `.env`.
+
+## 3. Validate Docker Compose
+
+```bash
+docker compose config
+```
+
+## 4. Build and Start
+
+```bash
+docker compose up -d --build
+```
+
+Check status:
+
+```bash
 docker compose ps
 ```
 
-The default stack starts only PostgreSQL, the one-shot Alembic migration gate,
-`backend_v2`, and the frontend Nginx container. PostgreSQL and the backend have
-no public host port. The frontend is published on
-`${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_HOST_PORT:-8080}` and proxies
-`/api/*` and `/health/*` to the backend.
+## 5. Verify Health
 
-Production cookies are `Secure`, so browser authentication requires HTTPS.
-The bundled Nginx container serves HTTP for an upstream TLS terminator; do not
-expose it as a public production endpoint without TLS.
+### PowerShell
 
-Verify the running topology:
-
-```bash
-curl -fsS http://127.0.0.1:8080/
-curl -fsS http://127.0.0.1:8080/health/live
-curl -fsS http://127.0.0.1:8080/health/ready
-docker compose exec backend_v2 alembic current
+```powershell
+Invoke-WebRequest http://localhost:8080/health/live -UseBasicParsing
+Invoke-WebRequest http://localhost:8080/health/ready -UseBasicParsing
 ```
 
-Create the first admin after migrations:
+### curl
+
+```bash
+curl http://localhost:8080/health/live
+curl http://localhost:8080/health/ready
+```
+
+Both should return HTTP `200`.
+
+## 6. Create the First Administrator
 
 ```bash
 docker compose exec backend_v2 python -m scripts.bootstrap_admin
 ```
 
-The command prompts for the email and password without echoing the password.
-No self-registration endpoint exists.
+The command prompts for an admin email and password. The password is not echoed.
 
-### Migration policy
+There is no public registration route.
 
-`migrate` runs `alembic upgrade head` as a one-shot service. Backend startup is
-gated on its successful completion, and database downgrade is never automated.
-For each release, back up PostgreSQL, review the Alembic history, run the
-one-shot migration, confirm `alembic current`, then start/restart the app.
+## 7. Open the Application
 
-Schema migrations cover PostgreSQL only. Importing historical MongoDB data is a
-separate, deployment-specific transform and validation exercise; no production
-Compose service connects to MongoDB or performs an implicit dual write.
-
-### Persistence and restart behavior
-
-`shikshasathi_v2_postgres_data` persists PostgreSQL data and
-`shikshasathi_v2_biometric_data` persists private enrollment images. Routine
-source archives and general code exports exclude biometric data. Back up these
-stores deliberately and separately according to local policy.
-
-## Local development
-
-Backend (Python 3.12+ and a reachable PostgreSQL database):
-
-```bash
-cd backend_v2
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# POSIX:   source .venv/bin/activate
-python -m pip install -e ".[dev]"
-cp .env.example .env
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
-```
-
-Frontend (Node.js 22 recommended):
-
-```bash
-cd frontend
-npm ci
-cp .env.example .env.local
-npm run dev
-```
-
-For separate local servers, set `VITE_API_URL=http://localhost:8000/api/v1`
-and include `http://localhost:3000` in backend CORS. The default production
-frontend build uses same-origin `/api/v1`.
-
-## Required configuration
-
-The root `.env.example` is the production Compose template.
-`backend_v2/.env.example` is the standalone backend development template, and
-`frontend/.env.example` is public build-time frontend configuration.
-
-The backend fails startup when required database/secret values are missing or
-invalid. In production it also rejects debug mode, wildcard/empty CORS,
-wildcard/empty trusted hosts, and an insecure refresh cookie. Never put a real
-credential, token, model file, biometric image, or `.env` in source or a release
-archive.
-
-Proxy trust is intentionally tied to the shipped topology: Compose sets
-`FORWARDED_ALLOW_IPS=*` only because `backend_v2` is not host-published and the
-frontend reverse proxy is the sole ingress on the private Compose network. If
-the backend is exposed or another proxy path is added, restrict this value to
-the exact trusted proxy addresses.
-
-## Verification commands
-
-Backend, against an isolated PostgreSQL test database:
-
-```bash
-docker compose --profile test up -d postgres_test
-docker compose --profile test run --rm backend_v2_test
-```
-
-The release/CI quality policy runs:
-
-```bash
-cd backend_v2
-alembic upgrade head
-pytest
-ruff format --check app alembic scripts
-ruff check app alembic scripts
-mypy app --exclude 'app/tests'
-python -m compileall -q app alembic scripts
-
-cd ../frontend
-npm ci
-npm run typecheck
-npm run lint
-npm test -- --run
-npm run build
-npm audit
-```
-
-CI is defined in `.github/workflows/ci.yml` for pull requests and pushes to
-`main`. It runs PostgreSQL migrations and the full backend suite, frontend
-quality/build/audit gates, and both production image builds. It contains only
-test placeholders—no repository or deployment secret.
-
-## Repository map
+Visit:
 
 ```text
-backend_v2/             FastAPI application, Alembic migrations, tests, image
-frontend/               React 19 + TypeScript + Vite app and Nginx image
-docs/                   architecture, policy, ADRs, phase handovers
-.github/workflows/      continuous integration
-docker-compose.yml      production stack plus isolated test profile
-backend/                retired legacy Flask/Mongo source (not production)
-API_DOCS.md             implemented v2 API summary
+http://localhost:8080
 ```
 
-Phase-specific decisions and verification evidence are preserved under
-`docs/HANDOVER_PHASE_*.md`. Phase 9 completes the Deployable MVP; Milestone 2
-(accessibility/UX polish, stronger observability, deeper performance and
-biometric lifecycle work) is separate and has not started.
+Sign in with the administrator account created above.
+
+## Stop the Local Stack
+
+```bash
+docker compose down
+```
+
+To also delete the local PostgreSQL volume:
+
+```bash
+docker compose down -v
+```
+
+> `docker compose down -v` is destructive and deletes local database data.
+
+---
+
+# Production Deployment
+
+## Frontend — Vercel
+
+**https://shikshasathi.vercel.app**
+
+Configuration:
+
+```text
+Root Directory: frontend
+Framework: Vite
+VITE_API_URL=/api/v1
+```
+
+`frontend/vercel.json` handles SPA fallback and `/api/*` proxying to Render.
+
+## Backend — Render
+
+**https://shikshasathi-api.onrender.com**
+
+Health:
+
+```text
+https://shikshasathi-api.onrender.com/health/live
+https://shikshasathi-api.onrender.com/health/ready
+```
+
+Configuration:
+
+```text
+Root Directory: backend_v2
+Runtime: Docker
+Health Check Path: /health/ready
+```
+
+Important environment variables:
+
+```text
+APP_ENV
+DEBUG
+DATABASE_URL
+DATABASE_ECHO
+LOG_LEVEL
+SECRET_KEY
+CORS_ALLOWED_ORIGINS
+TRUSTED_HOSTS
+REFRESH_TOKEN_COOKIE_SECURE
+REFRESH_TOKEN_COOKIE_SAMESITE
+POSTGRES_DB
+POSTGRES_USER
+POSTGRES_PASSWORD
+FACE_RECOGNITION_PROVIDER
+```
+
+Real values must remain in the hosting platform and never be committed.
+
+## Database — Neon PostgreSQL
+
+The application uses an async SQLAlchemy connection URL:
+
+```text
+postgresql+asyncpg://...
+```
+
+Migrations are managed with Alembic.
+
+Current release migration head:
+
+```text
+4f8c1a6e92b7
+```
+
+---
+
+# API
+
+The application exposes versioned APIs under:
+
+```text
+/api/v1
+```
+
+See:
+
+- [`API_DOCS.md`](API_DOCS.md)
+- [`backend_v2/README.md`](backend_v2/README.md)
+
+Example protected endpoint:
+
+```bash
+curl -i https://shikshasathi.vercel.app/api/v1/auth/me
+```
+
+Without authentication, `401 Unauthorized` is expected.
+
+---
+
+# CI & Quality
+
+The repository includes GitHub Actions checks covering:
+
+- Backend tests
+- Frontend tests
+- Python formatting/linting
+- Type checking
+- Frontend linting
+- Frontend type checking
+- Production builds
+- Dependency auditing
+- Migration validation
+- Docker image validation
+
+See `.github/workflows/ci.yml`.
+
+---
+
+# Security Notes
+
+- Never commit `.env`.
+- Never commit production DB passwords.
+- Never commit JWT/secret keys.
+- Never commit private keys or certificates.
+- Production secrets belong in hosting environment variables.
+- Public self-registration is intentionally disabled.
+- Biometric images and embeddings must not be committed.
+- Model artifacts should be independently obtained and integrity checked.
+
+If a secret is accidentally published, removing it from Git is not enough — rotate/revoke it.
+
+---
+
+# Face Recognition Notes
+
+The live free demo uses:
+
+```env
+FACE_RECOGNITION_PROVIDER=none
+```
+
+The optional dependency group is:
+
+```bash
+pip install -e ".[face-recognition]"
+```
+
+Depending on the platform, installing `dlib` may require native C++ build tools.
+
+Before enabling biometric workflows in a real environment, review consent/privacy requirements, model integrity, threshold calibration, FAR/FRR, and liveness requirements.
+
+See:
+
+- [`docs/BIOMETRIC_DATA_POLICY.md`](docs/BIOMETRIC_DATA_POLICY.md)
+- Phase 5 handover documents in `docs/`
+
+---
+
+# Documentation
+
+Useful documentation:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/AUDIT.md`](docs/AUDIT.md)
+- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+- [`docs/PROGRESS.md`](docs/PROGRESS.md)
+- [`docs/LEGACY_MIGRATION_MAP.md`](docs/LEGACY_MIGRATION_MAP.md)
+- [`docs/BIOMETRIC_DATA_POLICY.md`](docs/BIOMETRIC_DATA_POLICY.md)
+- [`docs/adr/`](docs/adr/)
+
+---
+
+# Current Deployment Profile
+
+| Component | Service | Status |
+|---|---|---|
+| Frontend | Vercel | Live |
+| Backend | Render | Live |
+| Database | Neon PostgreSQL | Live |
+| Source | GitHub | Public |
+| CI | GitHub Actions | Configured |
+| Face recognition | Optional | Disabled on free hosted demo |
+
+---
+
+# Known Limitations
+
+- Free backend hosting can introduce a cold-start delay after inactivity.
+- Face recognition is disabled in the hosted free-tier deployment.
+- Biometric model files are intentionally not bundled.
+- `backend/` remains as legacy migration reference; `backend_v2/` is authoritative.
+- Real-world biometric calibration and liveness validation are outside the hosted demo scope.
+- This is an academic/portfolio project, not a production service for real student biometric deployment.
+
+---
+
+# Roadmap
+
+Future portfolio-edition work may include:
+
+- UI/UX polish
+- Accessibility improvements
+- Deeper analytics
+- Monitoring and observability
+- Stronger security/property testing
+- Performance optimization
+- Backup/restore workflows
+- Biometric lifecycle improvements
+- Deployment reliability improvements
+
+---
+
+# Author
+
+**Yogesh Pandey**
+
+GitHub: [@KYogeshPandey](https://github.com/KYogeshPandey)
+
+---
+
+# License
+
+This repository is intended for academic and portfolio use.
+
+Unless a separate `LICENSE` file explicitly grants additional rights, no open-source license should be assumed.
+
+---
+
+## Project Status
+
+**Deployable MVP — Live**
+
+- GitHub publication complete
+- Frontend deployed
+- Backend deployed
+- Cloud PostgreSQL connected
+- Authentication verified
+- Core administration pages smoke-tested
+
+**Live:** https://shikshasathi.vercel.app
