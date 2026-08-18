@@ -2,15 +2,10 @@
 
 ARG PYTHON_VERSION=3.12
 
-# Native dlib compilation is confined to the builder. No compiler, CMake,
-# source tree, test suite, or package cache reaches the production runtime.
+# Minimal dependency builder for the production runtime.
 FROM python:${PYTHON_VERSION}-slim AS builder
 
 WORKDIR /build
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential cmake \
-    && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \

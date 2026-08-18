@@ -60,12 +60,16 @@ dependencies = [
     # compiler) to build from source — a real, documented deployment
     # trade-off accepted in exchange for an unambiguous, public-domain
     # license; see docs/HANDOVER_PHASE_5_STAGE_3.md, "Known risks".
-    "dlib>=19.24,<20.0",
     # --- Phase 8: bounded, in-memory attendance-report PDFs -----------
     "reportlab>=4.2,<5.0",
 ]
 
 [project.optional-dependencies]
+
+face-recognition = [
+    "dlib>=19.24,<20.0",
+]
+
 dev = [
     "pytest>=9.0.3,<10.0",
     "pytest-asyncio>=1.4,<2.0",
