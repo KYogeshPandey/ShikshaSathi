@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { apiErrorMessage } from "../api/errorMessage";
 import { importsApi } from "../api/imports";
+import { SlowRequestNotice } from "../components/SlowRequestNotice";
 import type { BulkImportEntity } from "../types/domain";
 
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
@@ -69,13 +70,14 @@ export function AdminImportsPage() {
         </button>
         {form.formState.errors.root?.message ? <p className="error-message" role="alert">{form.formState.errors.root.message}</p> : null}
         {mutation.error ? <p className="error-message" role="alert">{apiErrorMessage(mutation.error)}</p> : null}
+        {mutation.isPending ? <SlowRequestNotice /> : null}
       </form>
       {mutation.data ? (
         <div className="table-card" aria-live="polite">
           <h2>Import result</h2>
           <p>{mutation.data.imported_count} imported; {mutation.data.failed_count} failed out of {mutation.data.total_rows} rows.</p>
           {mutation.data.errors.length ? (
-            <div className="table-scroll"><table><thead><tr><th>Row</th><th>Code</th><th>Message</th></tr></thead><tbody>
+            <div className="table-scroll" role="region" aria-label="Import row errors" tabIndex={0}><table><thead><tr><th>Row</th><th>Code</th><th>Message</th></tr></thead><tbody>
               {mutation.data.errors.map((error) => <tr key={`${error.row_number}-${error.code}`}><td>{error.row_number}</td><td>{error.code}</td><td>{error.message}</td></tr>)}
             </tbody></table></div>
           ) : <p className="success-message">The import completed without row errors.</p>}

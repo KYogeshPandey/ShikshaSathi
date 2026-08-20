@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { SlowRequestNotice } from "../components/SlowRequestNotice";
 import { homePathForRole } from "../routes/config";
 
 const loginSchema = z.object({
@@ -32,6 +33,9 @@ function safeLoginError(error: unknown): string {
     }
     if (error.status === 0 || error.code === "NETWORK_ERROR") {
       return "The server could not be reached. Please try again shortly.";
+    }
+    if (error.status >= 500) {
+      return "The server is temporarily unavailable. Please try again shortly.";
     }
   }
   return "We could not sign you in. Please try again.";
@@ -81,7 +85,7 @@ export function LoginPage() {
         </a>
         <div className="login-intro-content">
           <p className="eyebrow">Learning, connected</p>
-          <h1 id="login-heading">One calm place for your school day.</h1>
+          <h2 id="login-heading">One calm place for your school day.</h2>
           <p className="intro-copy">
             Sign in to enter the workspace assigned to your school role.
           </p>
@@ -97,7 +101,7 @@ export function LoginPage() {
         <form className="login-form" onSubmit={onSubmit} noValidate>
           <div>
             <p className="eyebrow">Welcome back</p>
-            <h2>Sign in to continue</h2>
+            <h1>Sign in to continue</h1>
             <p>Use the email address provided by your school.</p>
           </div>
 
@@ -139,6 +143,7 @@ export function LoginPage() {
           <button className="button button--primary" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Signing in…" : "Sign in"}
           </button>
+          {isSubmitting ? <SlowRequestNotice /> : null}
         </form>
       </section>
     </main>

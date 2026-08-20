@@ -1,8 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
 import type { AuthUser, LoginCredentials, UserRole } from "../types/auth";
 import { AuthProvider } from "../auth/AuthProvider";
 import { createAppQueryClient } from "../lib/queryClient";
@@ -75,6 +76,20 @@ describe("application and authentication", () => {
     ).toBeVisible();
   });
 
+  it("closes the landing navigation with Escape and returns focus to its trigger", async () => {
+    renderApplication("/");
+    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+    const menuButton = document.querySelector<HTMLButtonElement>(".ss-menu-button");
+    expect(menuButton).not.toBeNull();
+
+    fireEvent.click(menuButton!);
+    expect(menuButton).toHaveAttribute("aria-label", "Close menu");
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(menuButton).toHaveAttribute("aria-label", "Open menu");
+    expect(menuButton).toHaveFocus();
+  });
+
   it("shows the auth bootstrap loading state", () => {
     authApiMocks.restoreSession.mockReturnValue(new Promise(() => undefined));
     renderApplication("/student");
@@ -107,6 +122,33 @@ describe("application and authentication", () => {
       email: "teacher@school.test",
       password: "correct horse battery staple",
     });
+  });
+
+  it("shows a specific message for invalid credentials", async () => {
+    authApiMocks.login.mockRejectedValue(new ApiError(401, "INVALID_CREDENTIALS", "Invalid credentials."));
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.type(await screen.findByLabelText(/email/i), "teacher@school.test");
+    await user.type(screen.getByLabelText(/password/i), "incorrect password");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect email or password.");
+  });
+
+  it("distinguishes a temporarily unavailable service from an authentication failure", async () => {
+    authApiMocks.login.mockRejectedValue(new ApiError(503, "SERVICE_UNAVAILABLE", "Internal detail."));
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.type(await screen.findByLabelText(/email/i), "teacher@school.test");
+    await user.type(screen.getByLabelText(/password/i), "any password");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The server is temporarily unavailable. Please try again shortly.",
+    );
+    expect(screen.queryByText("Internal detail.")).not.toBeInTheDocument();
   });
 
   it("redirects an unauthenticated protected route to login", async () => {

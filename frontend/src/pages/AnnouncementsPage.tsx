@@ -5,6 +5,7 @@ import { z } from "zod";
 import { announcementsApi } from "../api/announcements";
 import { apiErrorMessage } from "../api/errorMessage";
 import { queryKeys } from "../api/queryKeys";
+import { SlowRequestNotice } from "../components/SlowRequestNotice";
 import type { Announcement, AnnouncementAudience } from "../types/domain";
 
 interface AnnouncementFormValues {
@@ -84,27 +85,30 @@ export function AnnouncementsPage({ canManage = false }: { canManage?: boolean }
         <form className="form-card" onSubmit={submit} noValidate>
           <h2>{editing ? "Edit announcement" : "Publish announcement"}</h2>
           <div className="form-grid">
-            <label className="field"><span>Title</span><input {...form.register("title")} />{form.formState.errors.title?.message ? <small className="field-error">{form.formState.errors.title.message}</small> : null}</label>
+            <label className="field"><span>Title</span><input aria-describedby={form.formState.errors.title ? "announcement-title-error" : undefined} aria-invalid={Boolean(form.formState.errors.title)} {...form.register("title")} />{form.formState.errors.title?.message ? <small className="field-error" id="announcement-title-error">{form.formState.errors.title.message}</small> : null}</label>
             <label className="field"><span>Audience</span><select disabled={Boolean(editing)} {...form.register("audience")}><option value="all">All</option><option value="classroom">Classroom</option><option value="teacher">Teachers</option><option value="student">Students</option></select></label>
-            <label className="field field--wide"><span>Classroom UUIDs (comma separated)</span><input disabled={Boolean(editing)} {...form.register("classroom_ids")} />{form.formState.errors.classroom_ids?.message ? <small className="field-error">{form.formState.errors.classroom_ids.message}</small> : null}</label>
-            <label className="field field--wide"><span>Content</span><textarea rows={5} {...form.register("content")} />{form.formState.errors.content?.message ? <small className="field-error">{form.formState.errors.content.message}</small> : null}</label>
+            <label className="field field--wide"><span>Classroom UUIDs (comma separated)</span><input aria-describedby={form.formState.errors.classroom_ids ? "announcement-classrooms-error" : undefined} aria-invalid={Boolean(form.formState.errors.classroom_ids)} disabled={Boolean(editing)} {...form.register("classroom_ids")} />{form.formState.errors.classroom_ids?.message ? <small className="field-error" id="announcement-classrooms-error">{form.formState.errors.classroom_ids.message}</small> : null}</label>
+            <label className="field field--wide"><span>Content</span><textarea aria-describedby={form.formState.errors.content ? "announcement-content-error" : undefined} aria-invalid={Boolean(form.formState.errors.content)} rows={5} {...form.register("content")} />{form.formState.errors.content?.message ? <small className="field-error" id="announcement-content-error">{form.formState.errors.content.message}</small> : null}</label>
           </div>
           <div className="button-row"><button className="button button--primary" disabled={mutation.isPending} type="submit">{mutation.isPending ? "Saving..." : editing ? "Save changes" : "Publish"}</button>{editing ? <button className="button button--quiet" onClick={() => { setEditing(null); form.reset(emptyValues); }} type="button">Cancel</button> : null}</div>
           {mutation.error ? <p className="error-message" role="alert">{apiErrorMessage(mutation.error)}</p> : null}
+          {mutation.isPending ? <SlowRequestNotice /> : null}
         </form>
       ) : null}
       {notice ? <p className="success-message" role="status">{notice}</p> : null}
       {list.isPending ? <p className="empty-state">Loading announcements...</p> : null}
+      {list.isPending ? <SlowRequestNotice /> : null}
       {list.error ? <p className="error-message" role="alert">{apiErrorMessage(list.error)}</p> : null}
       {list.data?.items.length === 0 ? <p className="empty-state">No announcements are available.</p> : null}
       <div className="card-grid">
         {list.data?.items.map((item) => (
           <article className="content-card compact-card" key={item.id}>
             <p className="eyebrow">{item.audience}</p><h2>{item.title}</h2><p className="preserve-lines">{item.content}</p>
-            {canManage ? <div className="button-row"><button className="text-button" onClick={() => beginEdit(item)} type="button">Edit</button>{item.is_active ? <button className="text-button text-button--danger" onClick={() => { if (window.confirm("Deactivate this announcement?")) deactivate.mutate(item.id); }} type="button">Deactivate</button> : <span>Inactive</span>}</div> : null}
+            {canManage ? <div className="button-row"><button className="text-button" onClick={() => beginEdit(item)} type="button">Edit</button>{item.is_active ? <button className="text-button text-button--danger" disabled={deactivate.isPending} onClick={() => { if (window.confirm("Deactivate this announcement?")) deactivate.mutate(item.id); }} type="button">{deactivate.isPending && deactivate.variables === item.id ? "Deactivating..." : "Deactivate"}</button> : <span>Inactive</span>}</div> : null}
           </article>
         ))}
       </div>
+      {deactivate.isPending ? <SlowRequestNotice /> : null}
       {deactivate.error ? <p className="error-message" role="alert">{apiErrorMessage(deactivate.error)}</p> : null}
     </section>
   );

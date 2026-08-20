@@ -132,13 +132,18 @@ h3 {
   transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
 
-.button:focus-visible,
+button:focus-visible,
 input:focus-visible,
 a:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(42, 127, 122, 0.38);
+  outline: 3px solid var(--teal);
   outline-offset: 2px;
+}
+
+.sidebar a:focus-visible,
+.brand--inverse:focus-visible {
+  outline-color: #9ccbc7;
 }
 
 .button:disabled {
@@ -190,7 +195,7 @@ textarea:focus-visible {
   align-self: center;
 }
 
-.login-intro h1 {
+.login-intro h2 {
   max-width: 13ch;
   margin-bottom: 1.35rem;
   color: white;
@@ -235,7 +240,7 @@ textarea:focus-visible {
   box-shadow: var(--shadow);
 }
 
-.login-form h2 {
+.login-form h1 {
   margin-bottom: 0.55rem;
   color: var(--navy);
   font-size: 1.9rem;
@@ -321,14 +326,28 @@ textarea:focus-visible {
 }
 
 .loading-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.loading-primary {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.8rem;
 }
 
-.loading-card p {
+.loading-card p,
+.loading-primary p {
   margin: 0;
+}
+
+.slow-request-notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .spinner {
@@ -610,6 +629,11 @@ textarea:focus-visible {
 
 .table-scroll {
   overflow-x: auto;
+}
+
+.table-scroll:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
 }
 
 table {

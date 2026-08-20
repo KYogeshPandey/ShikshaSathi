@@ -6,6 +6,7 @@ import { academicsApi } from "../api/academics";
 import { attendanceApi } from "../api/attendance";
 import { apiErrorMessage } from "../api/errorMessage";
 import { queryKeys } from "../api/queryKeys";
+import { SlowRequestNotice } from "../components/SlowRequestNotice";
 import type { AttendanceStatus, BulkAttendanceRequest } from "../types/domain";
 
 interface ScopeValues {
@@ -34,6 +35,7 @@ export function ManualAttendancePage() {
   const form = useForm<ScopeValues>({ defaultValues: { classroom_id: "", subject_id: "", attendance_date: today() } });
   const classrooms = useQuery({ queryKey: queryKeys.classrooms, queryFn: () => academicsApi.listClassrooms() });
   const subjects = useQuery({ queryKey: queryKeys.subjects, queryFn: () => academicsApi.listSubjects() });
+  const optionsLoading = classrooms.isPending || subjects.isPending;
   const roster = useQuery({
     queryKey: scope ? queryKeys.attendanceRoster(scope.classroom_id, scope.subject_id) : [...queryKeys.attendance, "roster", "idle"],
     queryFn: () => attendanceApi.getRoster({ classroomId: scope!.classroom_id, subjectId: scope!.subject_id }),
@@ -80,19 +82,21 @@ export function ManualAttendancePage() {
 
   return (
     <section className="page-stack">
-      <div className="page-heading"><p className="eyebrow">Teacher attendance</p><h1>Manual attendance</h1><p>Load the server-authorized classroom roster, review every student, then save one bulk attendance request.</p></div>
+      <div className="page-heading"><p className="eyebrow">Teacher attendance</p><h1>Manual attendance</h1><p>Load an assigned classroom roster, review every student, then save the class in one action.</p></div>
       <form className="form-card" onSubmit={loadRoster} noValidate>
         <div className="form-grid">
-          <label className="field"><span>Classroom</span><select {...form.register("classroom_id")}><option value="">Select classroom</option>{classrooms.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select>{form.formState.errors.classroom_id?.message ? <small className="field-error">{form.formState.errors.classroom_id.message}</small> : null}</label>
-          <label className="field"><span>Subject</span><select {...form.register("subject_id")}><option value="">Select subject</option>{subjects.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select>{form.formState.errors.subject_id?.message ? <small className="field-error">{form.formState.errors.subject_id.message}</small> : null}</label>
-          <label className="field"><span>Date</span><input type="date" {...form.register("attendance_date")} />{form.formState.errors.attendance_date?.message ? <small className="field-error">{form.formState.errors.attendance_date.message}</small> : null}</label>
+          <label className="field"><span>Classroom</span><select aria-describedby={form.formState.errors.classroom_id ? "manual-classroom-error" : undefined} aria-invalid={Boolean(form.formState.errors.classroom_id)} disabled={optionsLoading} {...form.register("classroom_id")}><option value="">Select classroom</option>{classrooms.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select>{form.formState.errors.classroom_id?.message ? <small className="field-error" id="manual-classroom-error">{form.formState.errors.classroom_id.message}</small> : null}</label>
+          <label className="field"><span>Subject</span><select aria-describedby={form.formState.errors.subject_id ? "manual-subject-error" : undefined} aria-invalid={Boolean(form.formState.errors.subject_id)} disabled={optionsLoading} {...form.register("subject_id")}><option value="">Select subject</option>{subjects.data?.items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select>{form.formState.errors.subject_id?.message ? <small className="field-error" id="manual-subject-error">{form.formState.errors.subject_id.message}</small> : null}</label>
+          <label className="field"><span>Date</span><input aria-describedby={form.formState.errors.attendance_date ? "manual-date-error" : undefined} aria-invalid={Boolean(form.formState.errors.attendance_date)} type="date" {...form.register("attendance_date")} />{form.formState.errors.attendance_date?.message ? <small className="field-error" id="manual-date-error">{form.formState.errors.attendance_date.message}</small> : null}</label>
         </div>
-        <button className="button button--primary" disabled={classrooms.isPending || subjects.isPending} type="submit">Load roster</button>
+        <button className="button button--primary" disabled={optionsLoading} type="submit">{optionsLoading ? "Loading options…" : "Load roster"}</button>
+        {optionsLoading ? <SlowRequestNotice /> : null}
         {classrooms.error || subjects.error ? <p className="error-message" role="alert">{apiErrorMessage(classrooms.error ?? subjects.error)}</p> : null}
       </form>
-      {roster.isPending || daily.isPending ? <p className="empty-state">Loading authorized roster and saved attendance...</p> : null}
+      {roster.isPending || daily.isPending ? <p className="empty-state">Loading roster and saved attendance...</p> : null}
+      {roster.isPending || daily.isPending ? <SlowRequestNotice /> : null}
       {roster.error || daily.error ? <p className="error-message" role="alert">{apiErrorMessage(roster.error ?? daily.error)}</p> : null}
-      {scope && roster.data?.length === 0 ? <p className="empty-state">This authorized classroom has no active students.</p> : null}
+      {scope && roster.data?.length === 0 ? <p className="empty-state">This classroom has no active students.</p> : null}
       {roster.data?.length ? (
         <div className="table-card">
           <div className="table-card__header"><h2>Roster</h2><span>{roster.data.length} active students</span></div>
@@ -101,12 +105,13 @@ export function ManualAttendancePage() {
               <div className="attendance-row" key={student.student_profile_id}>
                 <div><strong>Roll {student.roll_number ?? "not assigned"}</strong><small>{student.student_profile_id}</small></div>
                 <div className="segmented" role="group" aria-label={`Attendance for roll ${student.roll_number ?? student.student_profile_id}`}>
-                  {(["present", "absent"] as const).map((status) => <button className={statusFor(student.student_profile_id) === status ? "segment segment--active" : "segment"} key={status} onClick={() => setStatuses((current) => ({ ...current, [student.student_profile_id]: status }))} type="button">{status}</button>)}
+                  {(["present", "absent"] as const).map((status) => <button aria-pressed={statusFor(student.student_profile_id) === status} className={statusFor(student.student_profile_id) === status ? "segment segment--active" : "segment"} key={status} onClick={() => setStatuses((current) => ({ ...current, [student.student_profile_id]: status }))} type="button">{status}</button>)}
                 </div>
               </div>
             ))}
           </div>
           <button className="button button--primary" disabled={save.isPending} onClick={saveAttendance} type="button">{save.isPending ? "Saving..." : "Save attendance"}</button>
+          {save.isPending ? <SlowRequestNotice /> : null}
           {notice ? <p className="success-message" role="status">{notice}</p> : null}
           {save.error ? <p className="error-message" role="alert">{apiErrorMessage(save.error)}</p> : null}
         </div>

@@ -8,6 +8,7 @@ import type { ApiDownload } from "../api/client";
 import { apiErrorMessage } from "../api/errorMessage";
 import { queryKeys } from "../api/queryKeys";
 import { reportsApi, type ReportFilters } from "../api/reports";
+import { SlowRequestNotice } from "../components/SlowRequestNotice";
 
 interface ReportFormValues {
   classroom_id: string;
@@ -167,14 +168,16 @@ export function ReportsPage() {
   const optionsError = classrooms.error ?? subjects.error ?? roster.error;
   const reportError = attendance.error ?? defaulters.error ?? leaderboard.error;
   const exportError = csvExport.error ?? pdfExport.error;
-  const isLoading = attendance.isPending || defaulters.isPending || leaderboard.isPending;
+  const optionsLoading = classrooms.isPending || subjects.isPending;
+  const reportsLoading = filters !== null && (attendance.isPending || defaulters.isPending || leaderboard.isPending);
+  const exportLoading = csvExport.isPending || pdfExport.isPending;
 
   return (
     <section className="page-stack">
       <div className="page-heading">
         <p className="eyebrow">Attendance intelligence</p>
         <h1>Reports</h1>
-        <p>Review one authorized classroom and subject over a bounded period, then export the same filtered attendance detail.</p>
+        <p>Review one assigned classroom and subject over a bounded period, then export the same filtered attendance detail.</p>
       </div>
 
       <form className="form-card" noValidate onSubmit={applyFilters}>
@@ -182,19 +185,29 @@ export function ReportsPage() {
         <div className="form-grid">
           <label className="field">
             <span>Classroom</span>
-            <select {...form.register("classroom_id")}>
+            <select
+              aria-describedby={form.formState.errors.classroom_id ? "report-classroom-error" : undefined}
+              aria-invalid={Boolean(form.formState.errors.classroom_id)}
+              disabled={optionsLoading}
+              {...form.register("classroom_id")}
+            >
               <option value="">Select classroom</option>
               {classrooms.data?.items.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name} ({classroom.code})</option>)}
             </select>
-            {form.formState.errors.classroom_id?.message ? <small className="field-error">{form.formState.errors.classroom_id.message}</small> : null}
+            {form.formState.errors.classroom_id?.message ? <small className="field-error" id="report-classroom-error">{form.formState.errors.classroom_id.message}</small> : null}
           </label>
           <label className="field">
             <span>Subject</span>
-            <select {...form.register("subject_id")}>
+            <select
+              aria-describedby={form.formState.errors.subject_id ? "report-subject-error" : undefined}
+              aria-invalid={Boolean(form.formState.errors.subject_id)}
+              disabled={optionsLoading}
+              {...form.register("subject_id")}
+            >
               <option value="">Select subject</option>
               {subjects.data?.items.map((subject) => <option key={subject.id} value={subject.id}>{subject.name} ({subject.code})</option>)}
             </select>
-            {form.formState.errors.subject_id?.message ? <small className="field-error">{form.formState.errors.subject_id.message}</small> : null}
+            {form.formState.errors.subject_id?.message ? <small className="field-error" id="report-subject-error">{form.formState.errors.subject_id.message}</small> : null}
           </label>
           <label className="field">
             <span>Period type</span>
@@ -206,15 +219,15 @@ export function ReportsPage() {
           {periodMode === "month" ? (
             <label className="field">
               <span>Month</span>
-              <input type="month" {...form.register("month")} />
-              {form.formState.errors.month?.message ? <small className="field-error">{form.formState.errors.month.message}</small> : null}
+              <input aria-describedby={form.formState.errors.month ? "report-month-error" : undefined} aria-invalid={Boolean(form.formState.errors.month)} type="month" {...form.register("month")} />
+              {form.formState.errors.month?.message ? <small className="field-error" id="report-month-error">{form.formState.errors.month.message}</small> : null}
             </label>
           ) : (
             <>
               <label className="field"><span>From</span><input type="date" {...form.register("date_from")} /></label>
               <label className="field">
-                <span>To</span><input type="date" {...form.register("date_to")} />
-                {form.formState.errors.date_to?.message ? <small className="field-error">{form.formState.errors.date_to.message}</small> : null}
+                <span>To</span><input aria-describedby={form.formState.errors.date_to ? "report-date-error" : undefined} aria-invalid={Boolean(form.formState.errors.date_to)} type="date" {...form.register("date_to")} />
+                {form.formState.errors.date_to?.message ? <small className="field-error" id="report-date-error">{form.formState.errors.date_to.message}</small> : null}
               </label>
             </>
           )}
@@ -227,18 +240,20 @@ export function ReportsPage() {
           </label>
           <label className="field">
             <span>Defaulter threshold (%)</span>
-            <input type="number" min="0" max="100" step="0.01" {...form.register("threshold", { valueAsNumber: true })} />
-            {form.formState.errors.threshold?.message ? <small className="field-error">{form.formState.errors.threshold.message}</small> : null}
+            <input aria-describedby={form.formState.errors.threshold ? "report-threshold-error" : undefined} aria-invalid={Boolean(form.formState.errors.threshold)} type="number" min="0" max="100" step="0.01" {...form.register("threshold", { valueAsNumber: true })} />
+            {form.formState.errors.threshold?.message ? <small className="field-error" id="report-threshold-error">{form.formState.errors.threshold.message}</small> : null}
           </label>
         </div>
         <div className="button-row">
-          <button className="button button--primary" type="submit">Generate reports</button>
+          <button className="button button--primary" disabled={optionsLoading || reportsLoading} type="submit">{optionsLoading ? "Loading options…" : reportsLoading ? "Generating…" : "Generate reports"}</button>
           <button className="button button--quiet" onClick={() => { form.reset(defaults); setFilters(null); setDownloadNotice(null); }} type="button">Clear</button>
         </div>
         {optionsError ? <p className="error-message" role="alert">{apiErrorMessage(optionsError)}</p> : null}
+        {optionsLoading || roster.isFetching ? <SlowRequestNotice /> : null}
       </form>
 
-      {filters && isLoading ? <p className="empty-state">Generating reports...</p> : null}
+      {reportsLoading ? <p className="empty-state">Generating reports...</p> : null}
+      {reportsLoading ? <SlowRequestNotice /> : null}
       {reportError ? <p className="error-message" role="alert">{apiErrorMessage(reportError)}</p> : null}
 
       {attendance.data ? (
@@ -257,8 +272,9 @@ export function ReportsPage() {
             </div>
             {downloadNotice ? <p className="success-message" role="status">{downloadNotice}</p> : null}
             {exportError ? <p className="error-message" role="alert">{apiErrorMessage(exportError)}</p> : null}
+            {exportLoading ? <SlowRequestNotice /> : null}
             {attendance.data.details.length === 0 ? <p className="empty-state">No attendance records match these filters.</p> : (
-              <div className="table-scroll"><table><thead><tr><th>Date</th><th>Roll</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>{attendance.data.details.map((row) => <tr key={`${row.attendance_date}-${row.student_profile_id}`}><td>{row.attendance_date}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td><span className={`status-pill status-pill--${row.status}`}>{row.status}</span></td><td>{row.remarks ?? "-"}</td></tr>)}</tbody></table></div>
+              <div className="table-scroll" role="region" aria-label="Attendance detail table" tabIndex={0}><table><thead><tr><th>Date</th><th>Roll</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>{attendance.data.details.map((row) => <tr key={`${row.attendance_date}-${row.student_profile_id}`}><td>{row.attendance_date}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td><span className={`status-pill status-pill--${row.status}`}>{row.status}</span></td><td>{row.remarks ?? "-"}</td></tr>)}</tbody></table></div>
             )}
           </div>
         </>
@@ -267,14 +283,14 @@ export function ReportsPage() {
       {defaulters.data ? (
         <div className="table-card">
           <div className="table-card__header"><h2>Defaulters below {defaulters.data.threshold}%</h2><span>{defaulters.data.students.length} students</span></div>
-          {defaulters.data.students.length === 0 ? <p className="empty-state">No active students are below this threshold.</p> : <div className="table-scroll"><table><thead><tr><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{defaulters.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
+          {defaulters.data.students.length === 0 ? <p className="empty-state">No active students are below this threshold.</p> : <div className="table-scroll" role="region" aria-label="Attendance defaulters table" tabIndex={0}><table><thead><tr><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{defaulters.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
         </div>
       ) : null}
 
       {leaderboard.data ? (
         <div className="table-card">
           <div className="table-card__header"><h2>Classroom leaderboard</h2><span>{leaderboard.data.students.length} active students</span></div>
-          {leaderboard.data.students.length === 0 ? <p className="empty-state">No active students are in this classroom.</p> : <div className="table-scroll"><table><thead><tr><th>Rank</th><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{leaderboard.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.rank}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
+          {leaderboard.data.students.length === 0 ? <p className="empty-state">No active students are in this classroom.</p> : <div className="table-scroll" role="region" aria-label="Classroom leaderboard table" tabIndex={0}><table><thead><tr><th>Rank</th><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{leaderboard.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.rank}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
         </div>
       ) : null}
     </section>

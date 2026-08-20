@@ -50,7 +50,10 @@ async function loadRoster() {
 describe("manual attendance", () => {
   it("loads the authoritative roster and submits one bulk payload", async () => {
     const user = await loadRoster();
-    await user.click(screen.getByRole("button", { name: "present" }));
+    const presentButton = screen.getByRole("button", { name: "present" });
+    expect(screen.getByRole("button", { name: "absent" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(presentButton);
+    expect(presentButton).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Save attendance" }));
 
     await waitFor(() => expect(mocks.saveBulk).toHaveBeenCalledOnce());

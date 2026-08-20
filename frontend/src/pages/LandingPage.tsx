@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./landing-page.css";
 
 type IconName =
@@ -115,7 +115,7 @@ function Logo() {
 
 function DashboardPreview() {
   return (
-    <div className="ss-dashboard-wrap">
+    <div className="ss-dashboard-wrap" aria-hidden="true">
       <div className="ss-dashboard">
         <div className="ss-dashboard-top">
           <div className="ss-dashboard-brand">
@@ -175,9 +175,22 @@ function DashboardPreview() {
 
 export function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [menuOpen]);
 
   return (
-    <main id="top" className="ss-landing">
+    <div id="top" className="ss-landing">
       <nav className="ss-nav" aria-label="Primary navigation">
         <div className="ss-container ss-nav-inner">
           <Logo />
@@ -200,6 +213,7 @@ export function LandingPage() {
           </div>
 
           <button
+            ref={menuButtonRef}
             type="button"
             className="ss-menu-button"
             aria-expanded={menuOpen}
@@ -235,6 +249,7 @@ export function LandingPage() {
         )}
       </nav>
 
+      <main>
       <section className="ss-container ss-hero">
         <div className="ss-hero-copy">
           <p className="ss-eyebrow">School administration, made practical</p>
@@ -474,6 +489,8 @@ export function LandingPage() {
         </div>
       </section>
 
+      </main>
+
       <footer className="ss-footer">
         <div className="ss-container ss-footer-inner">
           <Logo />
@@ -492,6 +509,6 @@ export function LandingPage() {
           <p>© 2026 ShikshaSathi</p>
         </div>
       </footer>
-    </main>
+    </div>
   );
 }

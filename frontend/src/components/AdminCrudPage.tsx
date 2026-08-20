@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import type { z } from "zod";
 import { ApiError } from "../api/client";
 import type { Page } from "../types/domain";
+import { SlowRequestNotice } from "./SlowRequestNotice";
 
 export type CrudFormValues = Record<string, string>;
 
@@ -128,11 +129,13 @@ export function AdminCrudPage<Item extends CrudItem>({
         <div className="form-grid">
           {fields.map((field) => {
             const disabled = mutation.isPending || Boolean(editing && field.createOnly);
+            const error = form.formState.errors[field.name]?.message;
+            const errorId = `${field.name}-error`;
             return (
               <label className="field" key={field.name}>
                 <span>{field.label}</span>
                 {field.type === "select" ? (
-                  <select disabled={disabled} {...form.register(field.name)}>
+                  <select aria-describedby={error ? errorId : undefined} aria-invalid={Boolean(error)} disabled={disabled} {...form.register(field.name)}>
                     {field.options?.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
@@ -142,11 +145,13 @@ export function AdminCrudPage<Item extends CrudItem>({
                     disabled={disabled}
                     placeholder={field.placeholder}
                     type={field.type ?? "text"}
+                    aria-describedby={error ? errorId : undefined}
+                    aria-invalid={Boolean(error)}
                     {...form.register(field.name)}
                   />
                 )}
-                {form.formState.errors[field.name]?.message ? (
-                  <small className="field-error">{form.formState.errors[field.name]?.message}</small>
+                {error ? (
+                  <small className="field-error" id={errorId}>{error}</small>
                 ) : null}
               </label>
             );
@@ -171,6 +176,7 @@ export function AdminCrudPage<Item extends CrudItem>({
         </div>
         {notice ? <p className="success-message" role="status">{notice}</p> : null}
         {mutation.error ? <p className="error-message" role="alert">{errorMessage(mutation.error)}</p> : null}
+        {mutation.isPending ? <SlowRequestNotice /> : null}
       </form>
 
       <div className="table-card">
@@ -179,10 +185,11 @@ export function AdminCrudPage<Item extends CrudItem>({
           {page ? <span>{page.total} total</span> : null}
         </div>
         {listQuery.isPending ? <p className="empty-state">Loading records…</p> : null}
+        {listQuery.isPending ? <SlowRequestNotice /> : null}
         {listQuery.error ? <p className="error-message" role="alert">{errorMessage(listQuery.error)}</p> : null}
         {page && page.items.length === 0 ? <p className="empty-state">No records found.</p> : null}
         {page && page.items.length > 0 ? (
-          <div className="table-scroll">
+          <div className="table-scroll" role="region" aria-label={`${title} records table`} tabIndex={0}>
             <table>
               <thead><tr>{columns.map((column) => <th key={column.label}>{column.label}</th>)}<th>Actions</th></tr></thead>
               <tbody>

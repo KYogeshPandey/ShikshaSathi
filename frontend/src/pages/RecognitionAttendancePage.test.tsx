@@ -64,7 +64,7 @@ describe("recognition attendance", () => {
     });
     const image = await submitImage();
 
-    expect(await screen.findByRole("heading", { name: "FOUND" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Match found" })).toBeVisible();
     expect(mocks.createAttempt).toHaveBeenCalledWith(expect.objectContaining({ classroomId: ids.classroom, subjectId: ids.subject, file: image }));
     expect(mocks.saveBulk).not.toHaveBeenCalled();
     expect(mocks.confirm).not.toHaveBeenCalled();
