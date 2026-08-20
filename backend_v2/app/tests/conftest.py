@@ -25,7 +25,7 @@ current Phase 3 head applied. See "database-backed test fixtures" below for
 exactly how that database is isolated and cleaned between tests, and
 backend_v2/README.md's "Phase 2 database-backed tests" section for how
 to run them (the authoritative path is
-``docker compose --profile test run --rm backend_v2_test``, which wires
+``docker compose --profile test run --build --rm backend_v2_test``, which wires
 DATABASE_URL to an isolated, ephemeral ``postgres_test`` service and
 runs ``alembic upgrade head`` before pytest — see docker-compose.yml).
 """

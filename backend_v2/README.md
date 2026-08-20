@@ -124,7 +124,7 @@ database:
 
 ```bash
 docker compose --profile test up -d postgres_test
-docker compose --profile test run --rm backend_v2_test
+docker compose --profile test run --build --rm backend_v2_test
 ```
 
 The multi-stage Dockerfile keeps native dlib compilation in the builder. The
