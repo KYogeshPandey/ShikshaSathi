@@ -75,21 +75,25 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-intro" aria-labelledby="login-heading">
-        <a className="brand" href="/login">
+        <a className="brand brand--inverse" href="/">
           <span className="brand-mark" aria-hidden="true">S</span>
           <span>ShikshaSathi</span>
         </a>
-        <div>
+        <div className="login-intro-content">
           <p className="eyebrow">Learning, connected</p>
           <h1 id="login-heading">One calm place for your school day.</h1>
           <p className="intro-copy">
             Sign in to enter the workspace assigned to your school role.
           </p>
         </div>
-        <p className="phase-label phase-label--dark">Secure Phase 6 foundation</p>
+        <p className="workspace-label workspace-label--dark">Secure role-based access</p>
       </section>
 
       <section className="login-panel" aria-label="Sign in">
+        <a className="brand login-panel-brand" href="/">
+          <span className="brand-mark" aria-hidden="true">S</span>
+          <span>ShikshaSathi</span>
+        </a>
         <form className="login-form" onSubmit={onSubmit} noValidate>
           <div>
             <p className="eyebrow">Welcome back</p>
@@ -102,10 +106,13 @@ export function LoginPage() {
             <input
               id="email"
               autoComplete="username"
+              aria-describedby={errors.email ? "email-error" : undefined}
               aria-invalid={Boolean(errors.email)}
               {...register("email")}
             />
-            {errors.email?.message && <p className="field-error">{errors.email.message}</p>}
+            {errors.email?.message && (
+              <p className="field-error" id="email-error">{errors.email.message}</p>
+            )}
           </div>
 
           <div className="field-stack">
@@ -114,11 +121,12 @@ export function LoginPage() {
               id="password"
               type="password"
               autoComplete="current-password"
+              aria-describedby={errors.password ? "password-error" : undefined}
               aria-invalid={Boolean(errors.password)}
               {...register("password")}
             />
             {errors.password?.message && (
-              <p className="field-error">{errors.password.message}</p>
+              <p className="field-error" id="password-error">{errors.password.message}</p>
             )}
           </div>
 

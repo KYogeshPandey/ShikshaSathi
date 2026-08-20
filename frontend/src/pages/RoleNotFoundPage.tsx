@@ -11,7 +11,7 @@ export function RoleNotFoundPage({ role }: RoleNotFoundPageProps) {
     <section className="content-card page-stack">
       <p className="eyebrow">Route unavailable</p>
       <h1>Page not available</h1>
-      <p>This page is not part of the Phase 6 application shell.</p>
+      <p>This page is not available in your current workspace.</p>
       <Link className="text-link" to={homePathForRole(role)}>
         Return to overview
       </Link>

@@ -5,6 +5,7 @@ import { TeacherLayout } from "../layouts/TeacherLayout";
 import { AdminDashboard } from "../pages/AdminDashboard";
 import { AdminImportsPage } from "../pages/AdminImportsPage";
 import { AnnouncementsPage } from "../pages/AnnouncementsPage";
+import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { ManualAttendancePage } from "../pages/ManualAttendancePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -25,13 +26,12 @@ import {
   AdminTimetablePage,
 } from "../pages/Admin/AdminResourcePages";
 import { AuthenticatedRoute } from "../routes/AuthenticatedRoute";
-import { HomeRedirect } from "../routes/HomeRedirect";
 import { RoleRoute } from "../routes/RoleRoute";
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<HomeRedirect />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 

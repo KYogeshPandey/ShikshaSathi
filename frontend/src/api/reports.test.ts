@@ -4,7 +4,7 @@ import { reportsApi } from "./reports";
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("Phase 8 report API contracts", () => {
+describe("Report API contracts", () => {
   it("maps typed filters to the exact report and export query parameters", async () => {
     const get = vi.spyOn(apiClient, "get").mockResolvedValue({});
     const download = vi.spyOn(apiClient, "download").mockResolvedValue({

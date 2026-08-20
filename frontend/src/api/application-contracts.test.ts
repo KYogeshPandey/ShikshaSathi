@@ -5,7 +5,7 @@ import { recognitionApi } from "./recognition";
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("Phase 7 API contracts", () => {
+describe("Application API contracts", () => {
   it("uses the teacher-authorized roster scope and student self-service endpoints", async () => {
     const get = vi.spyOn(apiClient, "get").mockResolvedValue({});
 

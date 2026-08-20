@@ -66,9 +66,13 @@ beforeEach(() => {
 });
 
 describe("application and authentication", () => {
-  it("renders the application root and sends an unauthenticated visitor to login", async () => {
+  it("renders the public landing page at the application root", async () => {
     renderApplication("/");
-    expect(await screen.findByRole("heading", { name: /sign in to continue/i })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", {
+        name: /one workspace for smarter school operations/i,
+      }),
+    ).toBeVisible();
   });
 
   it("shows the auth bootstrap loading state", () => {

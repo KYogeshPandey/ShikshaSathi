@@ -45,7 +45,7 @@ export function RoleLayout({ definition }: RoleLayoutProps) {
             ))}
           </nav>
         </div>
-        <p className="phase-label">Phase 8 workflows</p>
+        <p className="workspace-label">Secure school workspace</p>
       </aside>
 
       <div className="shell-content">
