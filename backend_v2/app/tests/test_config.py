@@ -253,6 +253,95 @@ def test_samesite_none_requires_secure_cookie_in_every_environment() -> None:
         )
 
 
+def test_otp_enabled_requires_an_explicit_delivery_provider() -> None:
+    with pytest.raises(ValidationError):
+        Settings(**_BASE_KWARGS, LOGIN_OTP_ENABLED=True, OTP_EMAIL_PROVIDER="none")
+
+
+def test_development_otp_log_adapter_is_allowed_only_outside_production() -> None:
+    development = Settings(
+        **_BASE_KWARGS,
+        APP_ENV=Environment.DEVELOPMENT,
+        LOGIN_OTP_ENABLED=True,
+        OTP_EMAIL_PROVIDER="development_log",
+    )
+    assert development.LOGIN_OTP_ENABLED is True
+
+    with pytest.raises(ValidationError):
+        Settings(
+            **_BASE_KWARGS,
+            APP_ENV=Environment.PRODUCTION,
+            DEBUG=False,
+            CORS_ALLOWED_ORIGINS="https://app.example.com",
+            TRUSTED_HOSTS="api.example.com",
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="development_log",
+        )
+
+
+def test_otp_smtp_requires_host_from_address_and_complete_credentials() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            **_BASE_KWARGS,
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="smtp",
+        )
+    with pytest.raises(ValidationError):
+        Settings(
+            **_BASE_KWARGS,
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="smtp",
+            SMTP_HOST="smtp.example.com",
+            SMTP_FROM_EMAIL="no-reply@example.com",
+            SMTP_USERNAME="user",
+        )
+
+
+def test_otp_smtp_transport_modes_are_mutually_exclusive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            **_BASE_KWARGS,
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="smtp",
+            SMTP_HOST="smtp.example.com",
+            SMTP_FROM_EMAIL="no-reply@example.com",
+            SMTP_STARTTLS=True,
+            SMTP_USE_SSL=True,
+        )
+
+
+def test_production_otp_smtp_rejects_plaintext_transport() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            **_BASE_KWARGS,
+            APP_ENV=Environment.PRODUCTION,
+            DEBUG=False,
+            CORS_ALLOWED_ORIGINS="https://app.example.com",
+            TRUSTED_HOSTS="api.example.com",
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="smtp",
+            SMTP_HOST="smtp.example.com",
+            SMTP_FROM_EMAIL="no-reply@example.com",
+            SMTP_STARTTLS=False,
+            SMTP_USE_SSL=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("LOGIN_OTP_TTL_SECONDS", 299),
+        ("LOGIN_OTP_TTL_SECONDS", 901),
+        ("LOGIN_OTP_MAX_ATTEMPTS", 0),
+        ("LOGIN_OTP_RESEND_COOLDOWN_SECONDS", 29),
+        ("SMTP_TIMEOUT_SECONDS", 61),
+    ],
+)
+def test_otp_security_settings_are_bounded(field: str, value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**_BASE_KWARGS, **{field: value})
+
+
 # ---------------------------------------------------------------------------
 # Phase 5 Stage 1 — face-recognition provider-neutral configuration
 #

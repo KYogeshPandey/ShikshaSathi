@@ -27,6 +27,19 @@ export interface LoginResponse {
   token: AccessTokenInfo;
 }
 
+export interface OtpChallengeInfo {
+  otp_required: true;
+  challenge_id: string;
+  expires_in: number;
+  resend_available_in: number;
+}
+
+export type LoginResult = AuthUser | OtpChallengeInfo;
+
+export function isOtpChallenge(result: LoginResult): result is OtpChallengeInfo {
+  return "otp_required" in result && result.otp_required === true;
+}
+
 export interface RefreshResponse {
   token: AccessTokenInfo;
 }

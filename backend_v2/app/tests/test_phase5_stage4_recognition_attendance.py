@@ -15,8 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.modules.attendance.models import AttendanceRecord, AttendanceStatus, AuditOutcome
 from app.modules.attendance.repository import AuditLogRepository
 from app.modules.attendance.service import AttendanceService
-from app.modules.face_recognition.domain import MatchStatus
-from app.modules.face_recognition.models import RecognitionAttendanceAttempt
+from app.modules.face_recognition.domain import EmbeddingVector, MatchStatus, NormalizedFaceInput
+from app.modules.face_recognition.models import (
+    RecognitionAttendanceAttempt,
+    RecognitionAttendanceReview,
+)
 from app.modules.face_recognition.recognition_attendance_service import (
     ACTION_RECOGNITION_ATTENDANCE_ATTEMPT,
     ACTION_RECOGNITION_ATTENDANCE_CONFIRMATION,
@@ -39,6 +42,7 @@ from app.tests.phase5_stage3_helpers import (
 from app.tests.phase5_stage4_helpers import seed_processed_embedding_direct
 
 _BASE = "/api/v1/face-recognition/attendance/attempts"
+_REVIEW_BASE = "/api/v1/face-recognition/attendance/reviews"
 _ATTENDANCE_DATE = date(2026, 8, 16)
 
 
@@ -62,6 +66,44 @@ async def _post_attempt(
     )
 
 
+async def _post_review(
+    client: AsyncClient,
+    *,
+    user,
+    classroom_id: str,
+    subject_id: str,
+    image: bytes | None = None,
+):
+    return await client.post(
+        _REVIEW_BASE,
+        data={
+            "classroom_id": classroom_id,
+            "subject_id": subject_id,
+            "attendance_date": _ATTENDANCE_DATE.isoformat(),
+        },
+        files={"file": ("classroom.jpg", image or make_jpeg_bytes(), "image/jpeg")},
+        headers=auth_headers(user),
+    )
+
+
+class _SequenceFaceEmbedder:
+    provider_name = "sequence_test_embedder"
+    model_identifier = "sequence_test_model"
+
+    def __init__(self, embeddings: list[EmbeddingVector]) -> None:
+        self._embeddings = embeddings
+        self._index = 0
+
+    def is_available(self) -> bool:
+        return True
+
+    def embed(self, face: NormalizedFaceInput) -> EmbeddingVector:
+        del face
+        embedding = self._embeddings[self._index]
+        self._index += 1
+        return embedding
+
+
 async def _attendance_rows(session: AsyncSession) -> list[AttendanceRecord]:
     result = await session.execute(select(AttendanceRecord).order_by(AttendanceRecord.id))
     return list(result.scalars().all())
@@ -73,7 +115,7 @@ async def _attempt(session: AsyncSession, attempt_id: str) -> RecognitionAttenda
     return attempt
 
 
-async def test_assigned_teacher_found_marks_via_scoped_attempt_and_retry_is_upsert(
+async def test_assigned_teacher_found_waits_for_confirmation_and_retry_is_upsert(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="s4-found")
@@ -107,7 +149,7 @@ async def test_assigned_teacher_found_marks_via_scoped_attempt_and_retry_is_upse
     body = first.json()
     assert body["decision"] == MatchStatus.FOUND.value
     assert body["matched_student_profile_id"] == str(student_id)
-    assert body["requires_confirmation"] is False
+    assert body["requires_confirmation"] is True
     assert set(body) == {
         "attempt_id",
         "classroom_id",
@@ -122,6 +164,19 @@ async def test_assigned_teacher_found_marks_via_scoped_attempt_and_retry_is_upse
     assert "image" not in first.text.lower()
     assert "model" not in first.text.lower()
 
+    assert await _attendance_rows(db_session) == []
+    first_confirmation = await client_db.post(
+        f"{_BASE}/{body['attempt_id']}/confirm",
+        json={"student_profile_id": str(student_id)},
+        headers=auth_headers(scope["teacher"]),
+    )
+    second_confirmation = await client_db.post(
+        f"{_BASE}/{second.json()['attempt_id']}/confirm",
+        json={"student_profile_id": str(student_id)},
+        headers=auth_headers(scope["teacher"]),
+    )
+    assert first_confirmation.status_code == 200, first_confirmation.text
+    assert second_confirmation.status_code == 200, second_confirmation.text
     rows = await _attendance_rows(db_session)
     assert len(rows) == 1
     assert rows[0].student_profile_id == student_id
@@ -181,7 +236,7 @@ async def test_unrelated_teacher_is_concealed_audited_and_runs_no_inference(
     assert set(audits[0].event_metadata) == {"reason_code", "attempted_action"}
 
 
-async def test_persisted_found_attendance_failure_then_retry_converges_without_duplicate(
+async def test_persisted_found_confirmation_failure_then_retry_converges_without_duplicate(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="s5-found-retry")
@@ -200,42 +255,35 @@ async def test_persisted_found_attendance_failure_then_retry_converges_without_d
         raise RuntimeError("simulated attendance transaction failure")
 
     with patch_providers(detector, embedder):
-        with (
-            patch.object(AttendanceService, "bulk_save", new=_fail_attendance),
-            pytest.raises(RuntimeError, match="simulated attendance transaction failure"),
-        ):
-            await _post_attempt(
-                client_db,
-                user=scope["teacher"],
-                classroom_id=scope["classroom"]["id"],
-                subject_id=scope["subject"]["id"],
-            )
-
-        persisted_after_failure = list(
-            (
-                await db_session.execute(
-                    select(RecognitionAttendanceAttempt).order_by(
-                        RecognitionAttendanceAttempt.created_at
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert len(persisted_after_failure) == 1
-        assert persisted_after_failure[0].decision is MatchStatus.FOUND
-        assert persisted_after_failure[0].attendance_record_id is None
-        assert await _attendance_rows(db_session) == []
-
-        retry = await _post_attempt(
+        proposal = await _post_attempt(
             client_db,
             user=scope["teacher"],
             classroom_id=scope["classroom"]["id"],
             subject_id=scope["subject"]["id"],
         )
+    assert proposal.status_code == 200, proposal.text
+    confirm_url = f"{_BASE}/{proposal.json()['attempt_id']}/confirm"
+    with (
+        patch.object(AttendanceService, "bulk_save", new=_fail_attendance),
+        pytest.raises(RuntimeError, match="simulated attendance transaction failure"),
+    ):
+        await client_db.post(
+            confirm_url,
+            json={"student_profile_id": str(student_id)},
+            headers=auth_headers(scope["teacher"]),
+        )
 
+    persisted_after_failure = await _attempt(db_session, proposal.json()["attempt_id"])
+    assert persisted_after_failure.decision is MatchStatus.FOUND
+    assert persisted_after_failure.attendance_record_id is None
+    assert await _attendance_rows(db_session) == []
+
+    retry = await client_db.post(
+        confirm_url,
+        json={"student_profile_id": str(student_id)},
+        headers=auth_headers(scope["teacher"]),
+    )
     assert retry.status_code == 200, retry.text
-    assert retry.json()["decision"] == MatchStatus.FOUND.value
     attendance_rows = await _attendance_rows(db_session)
     assert len(attendance_rows) == 1
     assert attendance_rows[0].student_profile_id == student_id
@@ -251,9 +299,8 @@ async def test_persisted_found_attendance_failure_then_retry_converges_without_d
         .scalars()
         .all()
     )
-    assert len(all_attempts) == 2
-    assert sum(attempt.attendance_record_id is None for attempt in all_attempts) == 1
-    assert sum(attempt.attendance_record_id is not None for attempt in all_attempts) == 1
+    assert len(all_attempts) == 1
+    assert all_attempts[0].attendance_record_id is not None
 
 
 async def test_roster_is_server_derived_active_classroom_only_without_global_fallback(
@@ -478,3 +525,198 @@ async def test_concurrent_same_confirmation_is_serialized_by_attempt_row_lock(
         limit=10,
     )
     assert len(confirmation_audits) == 1
+
+
+async def test_multi_face_review_proposes_two_students_and_writes_only_on_confirm(
+    client_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    scope = await seed_attendance_scope(client_db, db_session, suffix="m4-review-multi")
+    first_student = uuid.UUID(scope["student_profile_1"]["id"])
+    second_student = uuid.UUID(scope["student_profile_2"]["id"])
+    first_vector = make_unit_embedding_vector(seed=31.0)
+    second_vector = make_unit_embedding_vector(seed=32.0)
+    for student_id, vector in (
+        (first_student, first_vector),
+        (second_student, second_vector),
+    ):
+        await seed_processed_embedding_direct(
+            db_session,
+            student_profile_id=student_id,
+            created_by_user_id=scope["admin"].id,
+            embedding_values=list(vector.values),
+        )
+
+    detector = FakeFaceDetector(results=[[make_detected_face(), make_detected_face()]])
+    embedder = _SequenceFaceEmbedder([first_vector, second_vector])
+    with patch_providers(detector, embedder):  # type: ignore[arg-type]
+        response = await _post_review(
+            client_db,
+            user=scope["teacher"],
+            classroom_id=scope["classroom"]["id"],
+            subject_id=scope["subject"]["id"],
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["face_count"] == 2
+    assert {proposal["matched_student_profile_id"] for proposal in body["proposals"]} == {
+        str(first_student),
+        str(second_student),
+    }
+    assert all(not proposal["is_duplicate"] for proposal in body["proposals"])
+    assert await _attendance_rows(db_session) == []
+
+    payload = {
+        "records": [
+            {"student_profile_id": str(first_student), "status": "present"},
+            {"student_profile_id": str(second_student), "status": "absent"},
+        ]
+    }
+    confirm_url = f"{_REVIEW_BASE}/{body['review_id']}/confirm"
+    confirmed = await client_db.post(
+        confirm_url, json=payload, headers=auth_headers(scope["teacher"])
+    )
+    repeated = await client_db.post(
+        confirm_url, json=payload, headers=auth_headers(scope["teacher"])
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert repeated.json() == confirmed.json()
+    rows = await _attendance_rows(db_session)
+    assert {row.status for row in rows} == {
+        AttendanceStatus.PRESENT,
+        AttendanceStatus.ABSENT,
+    }
+
+    conflict = await client_db.post(
+        confirm_url,
+        json={
+            "records": [
+                {"student_profile_id": str(first_student), "status": "absent"},
+            ]
+        },
+        headers=auth_headers(scope["teacher"]),
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == (
+        "RECOGNITION_ATTENDANCE_REVIEW_CONFIRMATION_CONFLICT"
+    )
+
+
+async def test_review_handles_no_face_and_flags_duplicate_match(
+    client_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    scope = await seed_attendance_scope(client_db, db_session, suffix="m4-review-edge")
+    no_face_detector = FakeFaceDetector(results=[[]])
+    with patch_providers(no_face_detector, FakeFaceEmbedder(seed=1.0)):
+        no_face = await _post_review(
+            client_db,
+            user=scope["teacher"],
+            classroom_id=scope["classroom"]["id"],
+            subject_id=scope["subject"]["id"],
+        )
+    assert no_face.status_code == 200, no_face.text
+    assert no_face.json()["face_count"] == 0
+    assert no_face.json()["proposals"] == []
+
+    student_id = uuid.UUID(scope["student_profile_1"]["id"])
+    vector = make_unit_embedding_vector(seed=41.0)
+    await seed_processed_embedding_direct(
+        db_session,
+        student_profile_id=student_id,
+        created_by_user_id=scope["admin"].id,
+        embedding_values=list(vector.values),
+    )
+    duplicate_detector = FakeFaceDetector(results=[[make_detected_face(), make_detected_face()]])
+    with patch_providers(duplicate_detector, FakeFaceEmbedder(seed=41.0)):
+        duplicate = await _post_review(
+            client_db,
+            user=scope["teacher"],
+            classroom_id=scope["classroom"]["id"],
+            subject_id=scope["subject"]["id"],
+        )
+    assert duplicate.status_code == 200, duplicate.text
+    proposals = duplicate.json()["proposals"]
+    assert [proposal["is_duplicate"] for proposal in proposals] == [False, True]
+    assert await _attendance_rows(db_session) == []
+
+    reviews = list((await db_session.execute(select(RecognitionAttendanceReview))).scalars())
+    assert len(reviews) == 2
+
+
+async def test_confirmed_image_review_flows_into_reports_and_role_analytics(
+    client_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    scope = await seed_attendance_scope(client_db, db_session, suffix="m4-integrated")
+    first_student = uuid.UUID(scope["student_profile_1"]["id"])
+    second_student = uuid.UUID(scope["student_profile_2"]["id"])
+    vector = make_unit_embedding_vector(seed=51.0)
+    await seed_processed_embedding_direct(
+        db_session,
+        student_profile_id=first_student,
+        created_by_user_id=scope["admin"].id,
+        embedding_values=list(vector.values),
+    )
+
+    with patch_providers(
+        FakeFaceDetector(results=[[make_detected_face()]]),
+        FakeFaceEmbedder(seed=51.0),
+    ):
+        review = await _post_review(
+            client_db,
+            user=scope["teacher"],
+            classroom_id=scope["classroom"]["id"],
+            subject_id=scope["subject"]["id"],
+        )
+    assert review.status_code == 200, review.text
+    assert await _attendance_rows(db_session) == []
+
+    confirmed = await client_db.post(
+        f"{_REVIEW_BASE}/{review.json()['review_id']}/confirm",
+        json={
+            "records": [
+                {"student_profile_id": str(first_student), "status": "present"},
+                {"student_profile_id": str(second_student), "status": "absent"},
+            ]
+        },
+        headers=auth_headers(scope["teacher"]),
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    report = await client_db.get(
+        "/api/v1/reports/attendance",
+        params={
+            "classroom_id": scope["classroom"]["id"],
+            "subject_id": scope["subject"]["id"],
+            "month": "2026-08",
+        },
+        headers=auth_headers(scope["teacher"]),
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["summary"] == {
+        "total_count": 2,
+        "present_count": 1,
+        "absent_count": 1,
+        "attendance_percentage": 50.0,
+    }
+
+    analytics_params = {"days": 7, "date_to": "2026-08-20"}
+    teacher_analytics = await client_db.get(
+        "/api/v1/analytics/overview",
+        params=analytics_params,
+        headers=auth_headers(scope["teacher"]),
+    )
+    student_analytics = await client_db.get(
+        "/api/v1/analytics/overview",
+        params=analytics_params,
+        headers=auth_headers(scope["student_1"]),
+    )
+    assert teacher_analytics.status_code == 200
+    assert teacher_analytics.json()["attendance"]["total_count"] == 2
+    assert teacher_analytics.json()["attendance"]["attendance_percentage"] == 50.0
+    assert student_analytics.status_code == 200
+    assert student_analytics.json()["attendance"] == {
+        "total_count": 1,
+        "present_count": 1,
+        "absent_count": 0,
+        "attendance_percentage": 100.0,
+    }

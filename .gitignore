@@ -45,8 +45,8 @@ backend/app/static/faces/
 *.png.tmp
 
 # backend_v2 biometric storage root (Phase 5; docs/BIOMETRIC_DATA_POLICY.md).
-# No code writes here yet (Stage 1 is contracts/config only) — excluded now
-# so Stage 2/3 never accidentally commits real biometric data later. Matches
+# Enrollment code writes private runtime artifacts here — excluded so real
+# biometric data can never be committed. Matches
 # Settings.BIOMETRIC_STORAGE_ROOT's default (app/core/config.py); a
 # deployment that overrides that path to somewhere outside the repo does
 # not need this pattern at all.

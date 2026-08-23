@@ -42,3 +42,54 @@ class InvalidRefreshTokenError(AppError):
 
     def __init__(self) -> None:
         super().__init__("Refresh session is invalid or has expired. Please log in again.")
+
+
+class OtpLoginNotEnabledError(AppError):
+    code = "OTP_LOGIN_NOT_ENABLED"
+    status_code = status.HTTP_404_NOT_FOUND
+
+    def __init__(self) -> None:
+        super().__init__("Email verification is not enabled for login.")
+
+
+class InvalidOtpChallengeError(AppError):
+    code = "INVALID_OTP"
+    status_code = status.HTTP_401_UNAUTHORIZED
+
+    def __init__(self) -> None:
+        super().__init__("The verification code is invalid or has already been used.")
+
+
+class ExpiredOtpChallengeError(AppError):
+    code = "OTP_EXPIRED"
+    status_code = status.HTTP_410_GONE
+
+    def __init__(self) -> None:
+        super().__init__("The verification code has expired. Request a new code.")
+
+
+class OtpAttemptsExceededError(AppError):
+    code = "OTP_ATTEMPTS_EXCEEDED"
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self) -> None:
+        super().__init__("Too many incorrect verification attempts. Request a new code.")
+
+
+class OtpResendCooldownError(AppError):
+    code = "OTP_RESEND_COOLDOWN"
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        super().__init__(
+            "Please wait before requesting another verification code.",
+            details={"retry_after_seconds": retry_after_seconds},
+        )
+
+
+class OtpDeliveryUnavailableError(AppError):
+    code = "OTP_DELIVERY_UNAVAILABLE"
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__("The verification email could not be sent. Please try again shortly.")

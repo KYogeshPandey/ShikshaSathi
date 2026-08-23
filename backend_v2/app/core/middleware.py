@@ -152,6 +152,62 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
         )
 
 
+class AuthRateLimitMiddleware(BaseHTTPMiddleware):
+    """Apply independent fixed-window limits to configured auth POST routes."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        route_limits: dict[str, tuple[int, int]],
+    ) -> None:
+        super().__init__(app)
+        self.limiters = {
+            path: LoginAttemptLimiter(max_attempts=attempts, window_seconds=window)
+            for path, (attempts, window) in route_limits.items()
+        }
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        limiter = self.limiters.get(request.url.path) if request.method == "POST" else None
+        if limiter is None:
+            return await call_next(request)
+
+        client_key = request.client.host if request.client is not None else "unknown"
+        retry_after = await limiter.check(client_key)
+        if retry_after is None:
+            return await call_next(request)
+
+        request_id = getattr(request.state, "request_id", None) or "unknown"
+        request_id_header = getattr(request.state, "request_id_header", None) or "X-Request-ID"
+        message = (
+            "Too many login attempts. Please try again later."
+            if request.url.path.endswith("/auth/login")
+            else "Too many authentication attempts. Please try again later."
+        )
+        logger.warning(
+            "auth_rate_limited",
+            path=request.url.path,
+            retry_after_seconds=retry_after,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={
+                "error": {
+                    "code": "RATE_LIMIT_EXCEEDED",
+                    "message": message,
+                    "details": {},
+                },
+                "request_id": request_id,
+            },
+            headers={
+                "Retry-After": str(retry_after),
+                request_id_header: request_id,
+            },
+        )
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Assigns a request ID to every request and logs the outcome."""
 

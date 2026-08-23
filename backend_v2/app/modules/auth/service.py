@@ -17,12 +17,26 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.modules.auth.errors import InvalidCredentialsError, InvalidRefreshTokenError
-from app.modules.auth.repository import RefreshSessionRepository
+from app.modules.auth.email import OtpEmailSender
+from app.modules.auth.errors import (
+    ExpiredOtpChallengeError,
+    InvalidCredentialsError,
+    InvalidOtpChallengeError,
+    InvalidRefreshTokenError,
+    OtpAttemptsExceededError,
+    OtpDeliveryUnavailableError,
+    OtpLoginNotEnabledError,
+    OtpResendCooldownError,
+)
+from app.modules.auth.models import OtpChallenge, OtpPurpose
+from app.modules.auth.repository import OtpChallengeRepository, RefreshSessionRepository
 from app.modules.auth.security import (
     create_access_token,
+    generate_login_otp,
     generate_refresh_token,
+    hash_login_otp,
     hash_refresh_token,
+    verify_login_otp,
     verify_password,
     verify_password_timing_safe_dummy,
 )
@@ -52,12 +66,20 @@ class AuthResult:
     session_id: uuid.UUID
 
 
+@dataclass(frozen=True)
+class OtpChallengeResult:
+    challenge_id: uuid.UUID
+    expires_in_seconds: int
+    resend_available_in_seconds: int
+
+
 class AuthService:
     def __init__(self, *, session: AsyncSession, settings: Settings) -> None:
         self._session = session
         self._settings = settings
         self._users = UserRepository(session)
         self._refresh_sessions = RefreshSessionRepository(session)
+        self._otp_challenges = OtpChallengeRepository(session)
 
     async def login(self, *, email: str, password: str) -> AuthResult:
         """Authenticate by email/password and issue a new token pair.
@@ -68,6 +90,136 @@ class AuthService:
         raises the same ``InvalidCredentialsError`` (see that class's
         docstring for why).
         """
+        user = await self._validate_credentials(email=email, password=password)
+        result = await self._issue_token_pair(user)
+        await self._session.commit()
+        logger.info("login_succeeded", user_id=str(user.id))
+        return result
+
+    async def begin_otp_login(
+        self,
+        *,
+        email: str,
+        password: str,
+        email_sender: OtpEmailSender,
+    ) -> OtpChallengeResult:
+        """Validate credentials, replace any active challenge, and send a code."""
+        if not self._settings.LOGIN_OTP_ENABLED:
+            raise OtpLoginNotEnabledError()
+        user = await self._validate_credentials(email=email, password=password)
+        now = datetime.now(UTC)
+        await self._otp_challenges.lock_user(user.id)
+        await self._otp_challenges.invalidate_active_for_user(
+            user_id=user.id,
+            purpose=OtpPurpose.LOGIN,
+            now=now,
+        )
+        challenge, raw_otp = await self._create_otp_challenge(user=user, now=now)
+        await self._session.commit()
+        await self._deliver_otp(
+            challenge=challenge,
+            recipient=user.email,
+            raw_otp=raw_otp,
+            email_sender=email_sender,
+        )
+        logger.info("otp_challenge_created", user_id=str(user.id), challenge_id=str(challenge.id))
+        return self._otp_result(challenge, now=now)
+
+    async def verify_otp(
+        self,
+        *,
+        challenge_id: uuid.UUID,
+        otp: str,
+    ) -> AuthResult:
+        """Consume a correct active OTP and only then issue the normal session pair."""
+        self._require_otp_enabled()
+        challenge = await self._otp_challenges.get_by_id(challenge_id, for_update=True)
+        now = datetime.now(UTC)
+        self._require_usable_challenge(challenge)
+        assert challenge is not None
+        if _as_aware_utc(challenge.expires_at) <= now:
+            # Keep the expired row replaceable by the resend endpoint. Its
+            # timestamp already makes it unusable for verification.
+            raise ExpiredOtpChallengeError()
+
+        if not verify_login_otp(
+            challenge_id=challenge.id,
+            otp=otp,
+            expected_hash=challenge.otp_hash,
+            settings=self._settings,
+        ):
+            exhausted = await self._otp_challenges.record_failed_attempt(challenge, now=now)
+            await self._session.commit()
+            if exhausted:
+                raise OtpAttemptsExceededError()
+            raise InvalidOtpChallengeError()
+
+        user = await self._users.get_by_id(challenge.user_id)
+        if user is None or not user.is_active:
+            await self._otp_challenges.invalidate(challenge, now=now)
+            await self._session.commit()
+            raise InvalidOtpChallengeError()
+
+        await self._otp_challenges.consume(challenge, now=now)
+        result = await self._issue_token_pair(user)
+        await self._session.commit()
+        logger.info(
+            "otp_login_succeeded",
+            user_id=str(user.id),
+            challenge_id=str(challenge.id),
+        )
+        return result
+
+    async def resend_otp(
+        self,
+        *,
+        challenge_id: uuid.UUID,
+        email_sender: OtpEmailSender,
+    ) -> OtpChallengeResult:
+        """Replace an active challenge after its resend cooldown."""
+        self._require_otp_enabled()
+        existing = await self._otp_challenges.get_by_id(challenge_id)
+        if existing is None:
+            raise InvalidOtpChallengeError()
+        await self._otp_challenges.lock_user(existing.user_id)
+        existing = await self._otp_challenges.get_by_id(challenge_id, for_update=True)
+        now = datetime.now(UTC)
+        # An expired code may still be replaced; consumed/invalidated codes
+        # may not. The cooldown remains authoritative in either case.
+        self._require_usable_challenge(existing)
+        assert existing is not None
+
+        last_sent_at = _as_aware_utc(existing.last_sent_at)
+        cooldown_ends = last_sent_at + timedelta(
+            seconds=self._settings.LOGIN_OTP_RESEND_COOLDOWN_SECONDS
+        )
+        if cooldown_ends > now:
+            remaining = max(1, int((cooldown_ends - now).total_seconds() + 0.999))
+            raise OtpResendCooldownError(remaining)
+
+        user = await self._users.get_by_id(existing.user_id)
+        if user is None or not user.is_active:
+            await self._otp_challenges.invalidate(existing, now=now)
+            await self._session.commit()
+            raise InvalidOtpChallengeError()
+
+        await self._otp_challenges.invalidate(existing, now=now)
+        challenge, raw_otp = await self._create_otp_challenge(user=user, now=now)
+        await self._session.commit()
+        await self._deliver_otp(
+            challenge=challenge,
+            recipient=user.email,
+            raw_otp=raw_otp,
+            email_sender=email_sender,
+        )
+        logger.info(
+            "otp_challenge_resent",
+            user_id=str(user.id),
+            challenge_id=str(challenge.id),
+        )
+        return self._otp_result(challenge, now=now)
+
+    async def _validate_credentials(self, *, email: str, password: str) -> User:
         user = await self._users.get_by_email(email)
         if user is None:
             # Burn roughly the same amount of time a real verification
@@ -81,11 +233,81 @@ class AuthService:
 
         if not user.is_active:
             raise InvalidCredentialsError()
+        return user
 
-        result = await self._issue_token_pair(user)
-        await self._session.commit()
-        logger.info("login_succeeded", user_id=str(user.id))
-        return result
+    async def _create_otp_challenge(
+        self,
+        *,
+        user: User,
+        now: datetime,
+    ) -> tuple[OtpChallenge, str]:
+        challenge_id = uuid.uuid4()
+        raw_otp = generate_login_otp()
+        challenge = await self._otp_challenges.create(
+            challenge_id=challenge_id,
+            user_id=user.id,
+            otp_hash=hash_login_otp(
+                challenge_id=challenge_id,
+                otp=raw_otp,
+                settings=self._settings,
+            ),
+            expires_at=now + timedelta(seconds=self._settings.LOGIN_OTP_TTL_SECONDS),
+            max_attempts=self._settings.LOGIN_OTP_MAX_ATTEMPTS,
+            last_sent_at=now,
+        )
+        return challenge, raw_otp
+
+    async def _deliver_otp(
+        self,
+        *,
+        challenge: OtpChallenge,
+        recipient: str,
+        raw_otp: str,
+        email_sender: OtpEmailSender,
+    ) -> None:
+        try:
+            await email_sender.send_login_otp(
+                recipient=recipient,
+                otp=raw_otp,
+                expires_in_minutes=self._settings.LOGIN_OTP_TTL_SECONDS // 60,
+            )
+        except Exception as exc:
+            persisted = await self._otp_challenges.get_by_id(challenge.id, for_update=True)
+            if persisted is not None and persisted.invalidated_at is None:
+                await self._otp_challenges.invalidate(persisted, now=datetime.now(UTC))
+                await self._session.commit()
+            logger.error(
+                "otp_delivery_failed",
+                challenge_id=str(challenge.id),
+                exc_type=type(exc).__name__,
+            )
+            raise OtpDeliveryUnavailableError() from exc
+
+    def _require_otp_enabled(self) -> None:
+        if not self._settings.LOGIN_OTP_ENABLED:
+            raise OtpLoginNotEnabledError()
+
+    def _require_usable_challenge(
+        self,
+        challenge: OtpChallenge | None,
+    ) -> None:
+        if (
+            challenge is None
+            or challenge.purpose is not OtpPurpose.LOGIN
+            or challenge.consumed_at is not None
+            or challenge.invalidated_at is not None
+        ):
+            raise InvalidOtpChallengeError()
+        if challenge.attempt_count >= challenge.max_attempts:
+            raise OtpAttemptsExceededError()
+
+    def _otp_result(self, challenge: OtpChallenge, *, now: datetime) -> OtpChallengeResult:
+        expires_in = max(1, int((_as_aware_utc(challenge.expires_at) - now).total_seconds()))
+        return OtpChallengeResult(
+            challenge_id=challenge.id,
+            expires_in_seconds=expires_in,
+            resend_available_in_seconds=self._settings.LOGIN_OTP_RESEND_COOLDOWN_SECONDS,
+        )
 
     async def refresh(self, *, raw_refresh_token: str) -> AuthResult:
         """Validate, rotate, and exchange a refresh token for a new pair.

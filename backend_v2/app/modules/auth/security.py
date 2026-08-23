@@ -30,6 +30,7 @@ docs/adr/0006-identity-and-auth-foundations.md):
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -204,3 +205,37 @@ def hash_refresh_token(raw_token: str) -> str:
     secret-bearing setting (instruction I).
     """
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Login OTPs (short-lived, keyed hashes only)
+# ---------------------------------------------------------------------------
+
+
+def generate_login_otp() -> str:
+    """Return a cryptographically secure, zero-padded six-digit code."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_login_otp(*, challenge_id: uuid.UUID, otp: str, settings: Settings) -> str:
+    """Return the HMAC-SHA256 digest persisted for a login OTP.
+
+    Six-digit codes do not have enough entropy for an unkeyed digest: a
+    database-only attacker could exhaust that space immediately. Binding the
+    code and challenge ID to the existing application secret prevents that
+    offline attack without adding another committed/configured secret.
+    """
+    payload = f"login:{challenge_id}:{otp}".encode()
+    return hmac.new(settings.SECRET_KEY.encode(), payload, hashlib.sha256).hexdigest()
+
+
+def verify_login_otp(
+    *, challenge_id: uuid.UUID, otp: str, expected_hash: str, settings: Settings
+) -> bool:
+    """Compare a candidate OTP with its stored digest in constant time."""
+    candidate_hash = hash_login_otp(
+        challenge_id=challenge_id,
+        otp=otp,
+        settings=settings,
+    )
+    return hmac.compare_digest(candidate_hash, expected_hash)

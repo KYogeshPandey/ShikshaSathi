@@ -11,21 +11,25 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_active_user, verify_same_origin
+from app.modules.auth.email import OtpEmailSenderDependency
 from app.modules.auth.errors import InvalidRefreshTokenError
 from app.modules.auth.schemas import (
     AccessTokenInfo,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
+    OtpChallengeResponse,
+    OtpResendRequest,
+    OtpVerifyRequest,
     RefreshResponse,
 )
-from app.modules.auth.service import AuthResult, AuthService
+from app.modules.auth.service import AuthResult, AuthService, OtpChallengeResult
 from app.modules.users.models import User
 from app.modules.users.schemas import UserRead
 
@@ -64,9 +68,17 @@ def _token_info(result: AuthResult) -> AccessTokenInfo:
     )
 
 
+def _otp_challenge_response(result: OtpChallengeResult) -> OtpChallengeResponse:
+    return OtpChallengeResponse(
+        challenge_id=result.challenge_id,
+        expires_in=result.expires_in_seconds,
+        resend_available_in=result.resend_available_in_seconds,
+    )
+
+
 @router.post(
     "/login",
-    response_model=LoginResponse,
+    response_model=LoginResponse | OtpChallengeResponse,
     summary="Authenticate with email and password",
     responses={401: {"description": "Incorrect email or password, or account deactivated."}},
 )
@@ -75,11 +87,58 @@ async def login(
     response: Response,
     settings: Annotated[Settings, Depends(get_settings)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> LoginResponse:
+    email_sender: OtpEmailSenderDependency,
+) -> LoginResponse | OtpChallengeResponse:
     service = AuthService(session=session, settings=settings)
+    if settings.LOGIN_OTP_ENABLED:
+        challenge = await service.begin_otp_login(
+            email=payload.email,
+            password=payload.password,
+            email_sender=email_sender,
+        )
+        response.status_code = status.HTTP_202_ACCEPTED
+        return _otp_challenge_response(challenge)
     result = await service.login(email=payload.email, password=payload.password)
     _set_refresh_cookie(response, result, settings)
     return LoginResponse(user=UserRead.model_validate(result.user), token=_token_info(result))
+
+
+@router.post(
+    "/otp/verify",
+    response_model=LoginResponse,
+    summary="Verify an email OTP and create the authenticated session",
+)
+async def verify_login_otp(
+    payload: OtpVerifyRequest,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LoginResponse:
+    result = await AuthService(session=session, settings=settings).verify_otp(
+        challenge_id=payload.challenge_id,
+        otp=payload.otp,
+    )
+    _set_refresh_cookie(response, result, settings)
+    return LoginResponse(user=UserRead.model_validate(result.user), token=_token_info(result))
+
+
+@router.post(
+    "/otp/resend",
+    response_model=OtpChallengeResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Replace an OTP challenge after its resend cooldown",
+)
+async def resend_login_otp(
+    payload: OtpResendRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    email_sender: OtpEmailSenderDependency,
+) -> OtpChallengeResponse:
+    result = await AuthService(session=session, settings=settings).resend_otp(
+        challenge_id=payload.challenge_id,
+        email_sender=email_sender,
+    )
+    return _otp_challenge_response(result)
 
 
 @router.post(

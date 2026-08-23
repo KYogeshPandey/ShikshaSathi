@@ -68,6 +68,32 @@ python -m scripts.bootstrap_admin
 
 The password is prompted without echo. There is no public registration route.
 
+## Deterministic demo dataset
+
+The explicit seed command creates 1 administrator, 2 teachers, 12 students,
+2 classrooms, 3 subjects, 6 teacher assignments, 10 timetable entries,
+3 announcements, and deterministic weekday attendance history for the prior
+30-day window. Stable synthetic UUIDs make reruns idempotent.
+
+From `backend_v2`, preview or apply it with:
+
+```bash
+python -m scripts.seed_demo_data --dry-run
+python -m scripts.seed_demo_data
+python -m scripts.seed_demo_data --reset-demo
+```
+
+The password comes from a non-echoing prompt or `DEMO_SEED_PASSWORD`; it is
+never printed. Default identities use non-deliverable `.example` addresses.
+The documented email overrides can point selected demo accounts at
+operator-controlled inboxes when OTP delivery is needed. `--reset-demo`
+deletes and restores only rows inside the deterministic demo manifest;
+unrelated users and school rows are preserved.
+
+The seed never runs at API startup. Production mutation is refused unless
+`DEMO_SEED_ALLOW_PRODUCTION=true` is explicitly set for a deliberately chosen
+demo environment. Do not enable that flag against a real school database.
+
 ## Migrations
 
 ```bash
@@ -106,6 +132,45 @@ source, images, or release ZIPs.
 The default cosine threshold (`0.82`) is provisional, not classroom-calibrated,
 and no accuracy claim is made. The MVP has no liveness detection. See
 `../docs/BIOMETRIC_DATA_POLICY.md` and ADR 0011 before enabling recognition.
+
+Recognition attendance processes all detected faces in memory and persists
+non-biometric proposals only. It never turns a `FOUND` result into attendance
+automatically. The assigned teacher reviews proposed statuses and explicitly
+confirms before the existing `AttendanceService` writes records. Unknown,
+low-confidence, duplicate, missed, and unmarked results do not imply absence.
+Uploaded attendance images and per-attempt embeddings are not retained.
+
+Use the existing enrollment API/UI with synthetic or explicitly consented
+images kept outside Git. The hosted free-tier profile remains disabled with
+`FACE_RECOGNITION_PROVIDER=none`; local inference requires the documented
+YuNet/dlib files and sufficient native runtime resources.
+
+## Optional email OTP login
+
+`LOGIN_OTP_ENABLED=false` preserves the existing login and session behavior.
+When enabled, valid credentials create and email a short-lived six-digit
+challenge but return no access token or refresh cookie. Only successful OTP
+verification consumes the challenge and calls the existing JWT/rotating
+refresh-session issuer.
+
+OTP rows contain an HMAC-SHA256 digest (bound to the challenge ID), expiry,
+attempt count, send time, and consumed/invalidated timestamps—never plaintext
+codes. Expiry, maximum attempts, one-time use, resend replacement/cooldown,
+and independent login/verify/resend rate limits are enforced server-side.
+
+Provider choices are:
+
+- `none`: safe default; OTP cannot be enabled.
+- `development_log`: explicit local/testing adapter; forbidden in production.
+- `smtp`: standard SMTP. `SMTP_HOST` and `SMTP_FROM_EMAIL` are required;
+  `SMTP_USERNAME`/`SMTP_PASSWORD` must be supplied together when used.
+  Select STARTTLS or implicit SSL as required; production rejects plaintext
+  SMTP and rejects enabling both transport modes together.
+
+No provider account or key is created automatically. Store real SMTP values
+only in the deployment environment, apply the migration, and then set
+`LOGIN_OTP_ENABLED=true`. Any syntactically valid email domain is accepted,
+but credentials must belong to an existing active registered user.
 
 ## Quality gates
 

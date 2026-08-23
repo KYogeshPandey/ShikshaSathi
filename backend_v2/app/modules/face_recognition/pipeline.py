@@ -33,6 +33,7 @@ from app.modules.face_recognition.domain import (
 from app.modules.face_recognition.errors import (
     EnrollmentSampleMultipleFacesDetectedError,
     EnrollmentSampleNoFaceDetectedError,
+    RecognitionAttendanceTooManyFacesError,
 )
 from app.modules.face_recognition.provider_factory import get_detector, get_embedder
 
@@ -58,3 +59,31 @@ def detect_align_embed(image: DecodedImage, *, settings: Settings) -> EmbeddingV
     return validate_embedding_dimension(
         embedding, expected_dimension=settings.FACE_EMBEDDING_DIMENSION
     )
+
+
+def detect_align_embed_many(
+    image: DecodedImage,
+    *,
+    settings: Settings,
+) -> list[EmbeddingVector]:
+    """Embed every detected attendance face, preserving detector order.
+
+    Unlike enrollment and diagnostic probes, zero faces is a valid review
+    outcome. The configured upper bound prevents unbounded CPU work.
+    """
+    detector = get_detector(settings)
+    faces = detector.detect(image)
+    if len(faces) > settings.MAX_ATTENDANCE_FACES_PER_IMAGE:
+        raise RecognitionAttendanceTooManyFacesError(settings.MAX_ATTENDANCE_FACES_PER_IMAGE)
+
+    embedder = get_embedder(settings)
+    embeddings: list[EmbeddingVector] = []
+    for face in faces:
+        normalized_face = align_face(image, face)
+        embeddings.append(
+            validate_embedding_dimension(
+                embedder.embed(normalized_face),
+                expected_dimension=settings.FACE_EMBEDDING_DIMENSION,
+            )
+        )
+    return embeddings

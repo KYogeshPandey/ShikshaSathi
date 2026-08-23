@@ -81,6 +81,7 @@ The screenshots above show the live application UI. Personal account information
 ### Attendance
 
 - Manual attendance workflows
+- Multi-face image-assisted proposals with teacher review before every write
 - Teacher authorization and scope validation
 - Attendance audit trail
 - Student attendance views
@@ -118,6 +119,7 @@ The screenshots above show the live application UI. Personal account information
 - Secure production-cookie configuration
 - No public self-registration
 - Environment-based secret management
+- Optional email OTP verification before JWT/refresh-session issuance
 - No real `.env` or private-key files committed to Git
 
 ### Optional Face Recognition
@@ -131,6 +133,7 @@ The codebase includes:
 - `dlib` ResNet embedding integration
 - Similarity matching and ambiguity handling
 - Recognition attendance attempts
+- Multi-face review proposals and explicit confirmation
 - Model artifact integrity checks
 
 `dlib` is an **optional dependency** for the free deployment profile and is not installed in the default hosted backend image.
@@ -356,7 +359,28 @@ The command prompts for an admin email and password. The password is not echoed.
 
 There is no public registration route.
 
-## 7. Open the Application
+## 7. Optional Demo Dataset
+
+The deterministic demo seed is operator-invoked and never runs at startup:
+
+```bash
+docker compose exec backend_v2 python -m scripts.seed_demo_data --dry-run
+docker compose exec backend_v2 python -m scripts.seed_demo_data
+```
+
+It creates 1 synthetic administrator, 2 teachers, 12 students, 2 classrooms,
+3 subjects, assignments, timetable entries, announcements, and varied prior
+attendance that existing reports/analytics consume. Running it again is
+idempotent. `--reset-demo` restores only the known deterministic demo scope.
+Default emails use `.example`; selected login inboxes can be overridden with
+the documented `DEMO_*_EMAIL` environment settings. Passwords are prompted
+without echo unless supplied through the uncommitted environment.
+
+Production seeding is rejected unless an operator deliberately enables
+`DEMO_SEED_ALLOW_PRODUCTION=true` for a dedicated demo environment. Do not set
+that flag against a real school database.
+
+## 8. Open the Application
 
 Visit:
 
@@ -365,6 +389,12 @@ http://localhost:8080
 ```
 
 Sign in with the administrator account created above.
+
+Email OTP is optional and disabled by default. For explicit local-only testing,
+set `LOGIN_OTP_ENABLED=true` and `OTP_EMAIL_PROVIDER=development_log`; the code
+will appear only in controlled backend logs, and that adapter is forbidden in
+production. Production OTP requires deliberately configured SMTP environment
+values; no provider account or credential is created by this project.
 
 ## Stop the Local Stack
 
@@ -451,7 +481,7 @@ Migrations are managed with Alembic.
 Current release migration head:
 
 ```text
-4f8c1a6e92b7
+c52d7a40e8f1
 ```
 
 ---
@@ -494,11 +524,11 @@ The repository includes GitHub Actions checks covering:
 - Migration validation
 - Docker image validation
 
-Current verified frontend suite: **50 automated tests** across API contracts,
+Current verified frontend suite: **59 automated tests** across API contracts,
 authentication/routing, administrative workflows, attendance, recognition,
 reports, loading UX, and analytics.
 
-Current verified backend suite: **723 automated tests** across API, database,
+Current verified backend suite: **751 automated tests** across API, database,
 authorization, security, migration, attendance, reporting, biometric, and
 analytics behavior.
 
@@ -542,6 +572,14 @@ pip install -e ".[face-recognition]"
 Depending on the platform, installing `dlib` may require native C++ build tools.
 
 Before enabling biometric workflows in a real environment, review consent/privacy requirements, model integrity, threshold calibration, FAR/FRR, and liveness requirements.
+
+Image-assisted attendance processes the uploaded classroom image in memory,
+creates bounded proposals, and waits for an authorized teacher to explicitly
+confirm selected present/absent statuses. A recognized, unknown,
+low-confidence, duplicate, missed, or unmarked face never writes attendance by
+itself and never implies absence. The free hosted profile remains disabled;
+local use reuses the existing enrollment UI/API and keeps real/consented demo
+images and model artifacts outside Git.
 
 See:
 

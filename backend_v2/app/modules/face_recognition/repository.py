@@ -32,7 +32,11 @@ from app.modules.biometric_enrollment.models import (
     SampleStatus,
 )
 from app.modules.face_recognition.domain import MatchStatus
-from app.modules.face_recognition.models import BiometricEmbedding, RecognitionAttendanceAttempt
+from app.modules.face_recognition.models import (
+    BiometricEmbedding,
+    RecognitionAttendanceAttempt,
+    RecognitionAttendanceReview,
+)
 
 
 class CandidateEmbeddingRow:
@@ -193,8 +197,14 @@ class RecognitionAttendanceAttemptRepository:
         decision: MatchStatus,
         matched_student_profile_id: uuid.UUID | None,
         candidate_student_profile_ids: list[uuid.UUID],
+        review_id: uuid.UUID | None = None,
+        face_index: int | None = None,
+        is_duplicate: bool = False,
     ) -> RecognitionAttendanceAttempt:
         attempt = RecognitionAttendanceAttempt(
+            review_id=review_id,
+            face_index=face_index,
+            is_duplicate=is_duplicate,
             actor_user_id=actor_user_id,
             classroom_id=classroom_id,
             subject_id=subject_id,
@@ -238,8 +248,68 @@ class RecognitionAttendanceAttemptRepository:
         return attempt
 
 
+class RecognitionAttendanceReviewRepository:
+    """Persistence boundary for multi-face review and confirmation state."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_id(
+        self, review_id: uuid.UUID, *, for_update: bool = False
+    ) -> RecognitionAttendanceReview | None:
+        stmt = select(RecognitionAttendanceReview).where(
+            RecognitionAttendanceReview.id == review_id
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create(
+        self,
+        *,
+        actor_user_id: uuid.UUID,
+        classroom_id: uuid.UUID,
+        subject_id: uuid.UUID,
+        attendance_date: date,
+        candidate_student_profile_ids: list[uuid.UUID],
+        face_count: int,
+    ) -> RecognitionAttendanceReview:
+        review = RecognitionAttendanceReview(
+            actor_user_id=actor_user_id,
+            classroom_id=classroom_id,
+            subject_id=subject_id,
+            attendance_date=attendance_date,
+            candidate_count=len(candidate_student_profile_ids),
+            candidate_student_profile_ids=list(candidate_student_profile_ids),
+            face_count=face_count,
+        )
+        self._session.add(review)
+        await self._session.flush()
+        await self._session.refresh(review)
+        return review
+
+    async def confirm(
+        self,
+        review: RecognitionAttendanceReview,
+        *,
+        confirmed_by_user_id: uuid.UUID,
+        confirmed_at: datetime,
+        confirmed_records: list[dict[str, str]],
+        attendance_record_ids: list[uuid.UUID],
+    ) -> RecognitionAttendanceReview:
+        review.confirmed_by_user_id = confirmed_by_user_id
+        review.confirmed_at = confirmed_at
+        review.confirmed_records = confirmed_records
+        review.attendance_record_ids = attendance_record_ids
+        await self._session.flush()
+        await self._session.refresh(review)
+        return review
+
+
 __all__ = [
     "BiometricEmbeddingRepository",
     "CandidateEmbeddingRow",
     "RecognitionAttendanceAttemptRepository",
+    "RecognitionAttendanceReviewRepository",
 ]

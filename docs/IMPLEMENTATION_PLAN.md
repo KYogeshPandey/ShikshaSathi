@@ -99,10 +99,10 @@ Phase 5 is executed in five stages, each its own checkpoint with its own handove
 
 ### Stage 4: Recognition attendance workflow and APIs
 - **Status: COMPLETE.** Delivered in `docs/HANDOVER_PHASE_5_STAGE_4.md`; Stage 3's provider pipeline and Phase 4's attendance core remain the reused boundaries.
-- **Scope:** a router in `app/modules/face_recognition/` that accepts a classroom-scoped recognition attempt, runs detect→embed→match, and — only for a confirmed `FOUND` result, and only through the existing Phase 4 `AttendanceService` — marks attendance. `UNKNOWN`/`AMBIGUOUS` results require explicit human confirmation before any write, per `docs/BIOMETRIC_DATA_POLICY.md`.
+- **Scope:** a router in `app/modules/face_recognition/` that accepts a classroom-scoped recognition image, runs detect→embed→match for all bounded faces, and returns proposals. Every result—including `FOUND`—requires explicit teacher review and confirmation before selected records are written through the existing Phase 4 `AttendanceService`, per `docs/BIOMETRIC_DATA_POLICY.md`.
 - **Deliverables:** teacher-facing recognition-attempt endpoint(s), still behind the Phase 2 ownership-check dependency (a teacher may only trigger recognition for their own assigned classroom); every recognition decision audited.
 - **Dependencies:** Stage 3 (a working pipeline — **met**, this session) and Phase 4 (`AttendanceService`, reused unmodified).
-- **Acceptance criteria:** a `FOUND` result correctly marks attendance via `AttendanceService`; an `UNKNOWN`/`AMBIGUOUS` result never marks attendance without a separate confirmation step, with a test proving it; the recognition/provider layer never calls attendance-writing code directly (a structural/import-boundary check, not just a code-review note).
+- **Acceptance criteria:** no recognition result writes attendance before explicit confirmation; multi-face, unknown, ambiguous, duplicate, and no-face results remain safe proposals; confirmed selected records use `AttendanceService`; the recognition/provider layer never calls attendance-writing code directly (a structural/import-boundary check, not just a code-review note).
 - **Explicitly out of scope:** the final Docker/pytest/Ruff/mypy authoritative gate and Phase 5 closure sign-off (Stage 5).
 
 ### Stage 5: Runtime verification, hardening, and Phase 5 closure

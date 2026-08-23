@@ -23,7 +23,7 @@ from app.api.routes import health
 from app.core.config import get_settings
 from app.core.exceptions import EXCEPTION_HANDLERS
 from app.core.logging import configure_logging
-from app.core.middleware import LoginRateLimitMiddleware, RequestIDMiddleware
+from app.core.middleware import AuthRateLimitMiddleware, RequestIDMiddleware
 from app.db.session import dispose_all_engines
 from app.schemas.health import RootResponse
 
@@ -73,11 +73,23 @@ def create_app() -> FastAPI:
     # Starlette adds middleware inside-out. Request IDs remain the outermost
     # boundary, then CORS; host and login-limit rejections therefore keep
     # correlation and allowed-origin response headers.
+    auth_prefix = f"{settings.API_V1_PREFIX}/auth"
     app.add_middleware(
-        LoginRateLimitMiddleware,
-        login_path=f"{settings.API_V1_PREFIX}/auth/login",
-        max_attempts=settings.LOGIN_RATE_LIMIT_ATTEMPTS,
-        window_seconds=settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+        AuthRateLimitMiddleware,
+        route_limits={
+            f"{auth_prefix}/login": (
+                settings.LOGIN_RATE_LIMIT_ATTEMPTS,
+                settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+            f"{auth_prefix}/otp/verify": (
+                settings.OTP_VERIFY_RATE_LIMIT_ATTEMPTS,
+                settings.OTP_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+            f"{auth_prefix}/otp/resend": (
+                settings.OTP_RESEND_RATE_LIMIT_ATTEMPTS,
+                settings.OTP_RESEND_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+        },
     )
     app.add_middleware(
         TrustedHostMiddleware,

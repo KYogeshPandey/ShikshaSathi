@@ -4,7 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { AuthUser, LoginCredentials, UserRole } from "../types/auth";
+import type {
+  AuthUser,
+  LoginCredentials,
+  LoginResult,
+  OtpChallengeInfo,
+  UserRole,
+} from "../types/auth";
 import { AuthProvider } from "../auth/AuthProvider";
 import { createAppQueryClient } from "../lib/queryClient";
 import { makeUser } from "../test/testUsers";
@@ -12,7 +18,9 @@ import { App } from "./App";
 
 const authApiMocks = vi.hoisted(() => ({
   restoreSession: vi.fn<() => Promise<AuthUser | null>>(),
-  login: vi.fn<(credentials: LoginCredentials) => Promise<AuthUser>>(),
+  login: vi.fn<(credentials: LoginCredentials) => Promise<LoginResult>>(),
+  verifyOtp: vi.fn<(challengeId: string, otp: string) => Promise<AuthUser>>(),
+  resendOtp: vi.fn<(challengeId: string) => Promise<OtpChallengeInfo>>(),
   logout: vi.fn<() => Promise<void>>(),
 }));
 
@@ -101,6 +109,8 @@ function analyticsOverview(days: 7 | 30 = 7) {
 beforeEach(() => {
   authApiMocks.restoreSession.mockReset();
   authApiMocks.login.mockReset();
+  authApiMocks.verifyOtp.mockReset();
+  authApiMocks.resendOtp.mockReset();
   authApiMocks.logout.mockReset();
   authApiMocks.restoreSession.mockResolvedValue(null);
   authApiMocks.logout.mockResolvedValue();
@@ -171,6 +181,134 @@ describe("application and authentication", () => {
       email: "teacher@school.test",
       password: "correct horse battery staple",
     });
+  });
+
+  it("transitions through invalid OTP, resend, and successful verification", async () => {
+    const teacher = makeUser("teacher");
+    authApiMocks.login.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-one",
+      expires_in: 300,
+      resend_available_in: 0,
+    });
+    authApiMocks.verifyOtp
+      .mockRejectedValueOnce(new ApiError(401, "INVALID_OTP", "Invalid OTP."))
+      .mockResolvedValueOnce(teacher);
+    authApiMocks.resendOtp.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-two",
+      expires_in: 300,
+      resend_available_in: 0,
+    });
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.type(await screen.findByLabelText(/^email$/i), "teacher@any-domain.dev");
+    await user.type(screen.getByLabelText(/password/i), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByRole("heading", { name: /enter your sign-in code/i })).toBeVisible();
+    await user.type(screen.getByLabelText(/verification code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /verify and sign in/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect or has already been used/i);
+
+    await user.click(screen.getByRole("button", { name: /resend code/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/new verification code/i);
+    expect(authApiMocks.resendOtp).toHaveBeenCalledWith("challenge-one");
+
+    await user.type(screen.getByLabelText(/verification code/i), "654321");
+    await user.click(screen.getByRole("button", { name: /verify and sign in/i }));
+    expect(await screen.findByRole("heading", { name: /teacher workspace/i })).toBeVisible();
+    expect(authApiMocks.verifyOtp).toHaveBeenLastCalledWith("challenge-two", "654321");
+  });
+
+  it("allows changing account from the OTP step", async () => {
+    authApiMocks.login.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-change-account",
+      expires_in: 300,
+      resend_available_in: 30,
+    });
+    const user = userEvent.setup();
+    renderApplication("/login");
+    await user.type(await screen.findByLabelText(/^email$/i), "teacher@domain.example");
+    await user.type(screen.getByLabelText(/password/i), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await user.click(await screen.findByRole("button", { name: /change account/i }));
+    expect(screen.getByRole("heading", { name: /sign in to continue/i })).toBeVisible();
+    expect(screen.getByLabelText(/^email$/i)).toHaveValue("");
+  });
+
+  it("shows an expired OTP error without authenticating", async () => {
+    authApiMocks.login.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-expired",
+      expires_in: 1,
+      resend_available_in: 0,
+    });
+    authApiMocks.verifyOtp.mockRejectedValue(
+      new ApiError(410, "OTP_EXPIRED", "Expired."),
+    );
+    const user = userEvent.setup();
+    renderApplication("/login");
+    await user.type(await screen.findByLabelText(/^email$/i), "teacher@domain.dev");
+    await user.type(screen.getByLabelText(/password/i), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await user.click(await screen.findByLabelText(/verification code/i));
+    await user.paste("123456");
+    await user.click(screen.getByRole("button", { name: /verify and sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/code has expired/i);
+    expect(authApiMocks.verifyOtp).toHaveBeenCalledWith("challenge-expired", "123456");
+  });
+
+  it("enforces the visible resend countdown before enabling the real button", async () => {
+    authApiMocks.login.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-countdown",
+      expires_in: 300,
+      resend_available_in: 1,
+    });
+    const user = userEvent.setup();
+    renderApplication("/login");
+    await user.type(await screen.findByLabelText(/^email$/i), "teacher@domain.dev");
+    await user.type(screen.getByLabelText(/password/i), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByRole("button", { name: "Resend in 1s" })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Resend code" }, { timeout: 2_500 }),
+    ).toBeEnabled();
+  });
+
+  it("shows OTP verification loading and sanitized backend-unavailable feedback", async () => {
+    authApiMocks.login.mockResolvedValue({
+      otp_required: true,
+      challenge_id: "challenge-unavailable",
+      expires_in: 300,
+      resend_available_in: 0,
+    });
+    let rejectVerification: ((reason: unknown) => void) | undefined;
+    authApiMocks.verifyOtp.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectVerification = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    renderApplication("/login");
+    await user.type(await screen.findByLabelText(/^email$/i), "teacher@domain.dev");
+    await user.type(screen.getByLabelText(/password/i), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await user.type(await screen.findByLabelText(/verification code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /verify and sign in/i }));
+    expect(screen.getByRole("button", { name: "Verifying…" })).toBeDisabled();
+
+    rejectVerification?.(new ApiError(503, "SERVICE_UNAVAILABLE", "Internal detail."));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /verification service is temporarily unavailable/i,
+    );
+    expect(screen.queryByText("Internal detail.")).not.toBeInTheDocument();
   });
 
   it("shows a specific message for invalid credentials", async () => {

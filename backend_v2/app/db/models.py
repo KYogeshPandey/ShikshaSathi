@@ -32,7 +32,7 @@ from app.modules.attendance.models import (
     AuditLog,
     AuditOutcome,
 )
-from app.modules.auth.models import RefreshSession
+from app.modules.auth.models import OtpChallenge, OtpPurpose, RefreshSession
 from app.modules.biometric_enrollment.models import (
     BiometricEnrollment,
     BiometricSample,
@@ -40,7 +40,11 @@ from app.modules.biometric_enrollment.models import (
     RecognitionProcessingState,
     SampleStatus,
 )
-from app.modules.face_recognition.models import BiometricEmbedding, RecognitionAttendanceAttempt
+from app.modules.face_recognition.models import (
+    BiometricEmbedding,
+    RecognitionAttendanceAttempt,
+    RecognitionAttendanceReview,
+)
 from app.modules.profiles.models import StudentProfile, TeacherProfile
 from app.modules.users.models import User
 
@@ -58,7 +62,10 @@ __all__ = [
     "Classroom",
     "DayOfWeek",
     "EnrollmentStatus",
+    "OtpChallenge",
+    "OtpPurpose",
     "RecognitionAttendanceAttempt",
+    "RecognitionAttendanceReview",
     "RecognitionProcessingState",
     "RefreshSession",
     "SampleStatus",

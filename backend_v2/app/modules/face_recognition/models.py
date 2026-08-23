@@ -85,7 +85,7 @@ from enum import Enum
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -159,6 +159,67 @@ class BiometricEmbedding(Base):
         )
 
 
+class RecognitionAttendanceReview(Base):
+    """Authorized image-review envelope; raw images/embeddings are never retained."""
+
+    __tablename__ = "recognition_attendance_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    classroom_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("classrooms.id", ondelete="RESTRICT"), nullable=False
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False
+    )
+    attendance_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    candidate_count: Mapped[int] = mapped_column(Integer(), nullable=False)
+    candidate_student_profile_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(PGUUID(as_uuid=True)), nullable=False
+    )
+    face_count: Mapped[int] = mapped_column(Integer(), nullable=False)
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_records: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB(), nullable=True)
+    attendance_record_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(PGUUID(as_uuid=True)), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        sa.Index("ix_recognition_attendance_reviews_actor_user_id", "actor_user_id"),
+        sa.Index("ix_recognition_attendance_reviews_classroom_id", "classroom_id"),
+        sa.Index("ix_recognition_attendance_reviews_subject_id", "subject_id"),
+        sa.CheckConstraint("candidate_count > 0", name="candidate_count_positive"),
+        sa.CheckConstraint(
+            "cardinality(candidate_student_profile_ids) = candidate_count",
+            name="candidate_roster_count_matches",
+        ),
+        sa.CheckConstraint("face_count >= 0", name="face_count_non_negative"),
+        sa.CheckConstraint(
+            "(confirmed_by_user_id IS NULL AND confirmed_at IS NULL "
+            "AND confirmed_records IS NULL AND attendance_record_ids IS NULL) OR "
+            "(confirmed_by_user_id IS NOT NULL AND confirmed_at IS NOT NULL "
+            "AND confirmed_records IS NOT NULL AND attendance_record_ids IS NOT NULL)",
+            name="confirmation_fields_consistent",
+        ),
+    )
+
+
 class RecognitionAttendanceAttempt(Base):
     """One persisted, classroom-scoped recognition attendance decision.
 
@@ -172,6 +233,19 @@ class RecognitionAttendanceAttempt(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    review_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "recognition_attendance_reviews.id",
+            name="fk_recognition_attempts_review_id_reviews",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+    )
+    face_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    is_duplicate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )
     actor_user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
@@ -228,6 +302,7 @@ class RecognitionAttendanceAttempt(Base):
 
     __table_args__ = (
         sa.Index("ix_recognition_attendance_attempts_actor_user_id", "actor_user_id"),
+        sa.Index("ix_recognition_attendance_attempts_review_id", "review_id"),
         sa.Index("ix_recognition_attendance_attempts_classroom_id", "classroom_id"),
         sa.Index("ix_recognition_attendance_attempts_subject_id", "subject_id"),
         sa.Index(
@@ -254,7 +329,13 @@ class RecognitionAttendanceAttempt(Base):
             "AND confirmed_at IS NOT NULL)",
             name="confirmation_fields_consistent",
         ),
+        sa.CheckConstraint("face_index IS NULL OR face_index >= 0", name="face_index_non_negative"),
+        sa.UniqueConstraint("review_id", "face_index", name="uq_recognition_attempts_review_face"),
     )
 
 
-__all__ = ["BiometricEmbedding", "RecognitionAttendanceAttempt"]
+__all__ = [
+    "BiometricEmbedding",
+    "RecognitionAttendanceAttempt",
+    "RecognitionAttendanceReview",
+]

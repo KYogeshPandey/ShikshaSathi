@@ -1,12 +1,14 @@
 import { createContext, useContext } from "react";
-import type { AuthUser, LoginCredentials } from "../types/auth";
+import type { AuthUser, LoginCredentials, LoginResult, OtpChallengeInfo } from "../types/auth";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 export interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
-  login(credentials: LoginCredentials): Promise<AuthUser>;
+  login(credentials: LoginCredentials): Promise<LoginResult>;
+  verifyOtp(challengeId: string, otp: string): Promise<AuthUser>;
+  resendOtp(challengeId: string): Promise<OtpChallengeInfo>;
   logout(): Promise<void>;
 }
 

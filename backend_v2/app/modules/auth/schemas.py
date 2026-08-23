@@ -11,6 +11,9 @@ ever crosses the API boundary.
 
 from __future__ import annotations
 
+import uuid
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.modules.users.normalization import normalize_email
@@ -40,6 +43,22 @@ class AccessTokenInfo(BaseModel):
 class LoginResponse(BaseModel):
     user: UserRead
     token: AccessTokenInfo
+
+
+class OtpChallengeResponse(BaseModel):
+    otp_required: Literal[True] = True
+    challenge_id: uuid.UUID
+    expires_in: int = Field(..., ge=1)
+    resend_available_in: int = Field(..., ge=0)
+
+
+class OtpVerifyRequest(BaseModel):
+    challenge_id: uuid.UUID
+    otp: str = Field(..., pattern=r"^\d{6}$")
+
+
+class OtpResendRequest(BaseModel):
+    challenge_id: uuid.UUID
 
 
 class RefreshResponse(BaseModel):

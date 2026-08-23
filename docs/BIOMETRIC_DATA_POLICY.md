@@ -327,6 +327,19 @@ triggered it, and its outcome — never the raw biometric payload itself
   requires an explicit human confirmation step before anything is
   written.
 
+### Milestone 4 attendance-image review
+
+Every `FOUND`, `AMBIGUOUS`, and `UNKNOWN` result is only a suggestion inside a
+teacher review. A match is never silently resolved to final attendance, and a
+face not found in one image is never evidence of absence. Duplicate matches
+are flagged and ignored by the default proposal. Only statuses explicitly
+selected and confirmed by the authorized teacher reach `AttendanceService`.
+
+Classroom-image bytes, decoded pixels, aligned crops, and per-request
+embeddings exist only in memory for the bounded request. The review table
+stores scope, candidate IDs, decisions, confirmation metadata, and attendance
+IDs—not the image or embeddings.
+
 ## Logging restrictions
 
 - **Provider logs cannot contain raw image bytes or embeddings.**

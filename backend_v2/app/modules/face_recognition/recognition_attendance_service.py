@@ -26,13 +26,17 @@ from app.modules.face_recognition.domain import EmbeddingVector, MatchStatus
 from app.modules.face_recognition.errors import (
     RecognitionAttendanceAttemptNotFoundError,
     RecognitionAttendanceConfirmationConflictError,
-    RecognitionAttendanceConfirmationNotAllowedError,
     RecognitionAttendanceMatchOutsideRosterError,
+    RecognitionAttendanceReviewConfirmationConflictError,
+    RecognitionAttendanceReviewNotFoundError,
     RecognitionAttendanceRosterEmptyError,
     RecognitionAttendanceStudentNotInRosterError,
 )
 from app.modules.face_recognition.matching_service import MatchingService
-from app.modules.face_recognition.repository import RecognitionAttendanceAttemptRepository
+from app.modules.face_recognition.repository import (
+    RecognitionAttendanceAttemptRepository,
+    RecognitionAttendanceReviewRepository,
+)
 from app.modules.profiles.repository import StudentProfileRepository
 from app.modules.users.models import User
 
@@ -45,7 +49,6 @@ _ENTITY_TYPE_RECOGNITION_ATTEMPT = "recognition_attendance_attempt"
 
 _REASON_AUTHORIZED_ROSTER_EMPTY = "authorized_roster_empty"
 _REASON_ATTEMPT_NOT_FOUND = "attempt_not_found"
-_REASON_DECISION_NOT_CONFIRMABLE = "decision_not_confirmable"
 _REASON_ALREADY_CONFIRMED_DIFFERENT_STUDENT = "already_confirmed_different_student"
 _REASON_STUDENT_NOT_IN_AUTHORIZED_ROSTER = "student_not_in_authorized_roster"
 _REASON_MATCH_OUTSIDE_AUTHORIZED_ROSTER = "match_outside_authorized_roster"
@@ -78,6 +81,33 @@ class RecognitionConfirmationOutcome:
     attendance_record_id: uuid.UUID
 
 
+@dataclass(frozen=True)
+class RecognitionReviewProposalOutcome:
+    attempt_id: uuid.UUID
+    face_index: int
+    decision: MatchStatus
+    matched_student_profile_id: uuid.UUID | None
+    best_similarity: float | None
+    is_duplicate: bool
+
+
+@dataclass(frozen=True)
+class RecognitionReviewOutcome:
+    review_id: uuid.UUID
+    classroom_id: uuid.UUID
+    subject_id: uuid.UUID
+    attendance_date: date
+    face_count: int
+    proposals: tuple[RecognitionReviewProposalOutcome, ...]
+
+
+@dataclass(frozen=True)
+class RecognitionReviewConfirmationOutcome:
+    review_id: uuid.UUID
+    attendance_record_ids: tuple[uuid.UUID, ...]
+    confirmed_records: tuple[tuple[uuid.UUID, AttendanceStatus], ...]
+
+
 def _independent_session_factory(
     session: AsyncSession,
 ) -> async_sessionmaker[AsyncSession]:
@@ -92,6 +122,7 @@ class RecognitionAttendanceService:
         self._session = session
         self._settings = settings or get_settings()
         self._attempts = RecognitionAttendanceAttemptRepository(session)
+        self._reviews = RecognitionAttendanceReviewRepository(session)
         self._audit_logs = AuditLogRepository(session)
         self._students = StudentProfileRepository(session)
 
@@ -148,7 +179,7 @@ class RecognitionAttendanceService:
         probe_embedding: EmbeddingVector,
         request_id: str | None = None,
     ) -> RecognitionAttemptOutcome:
-        """Match within ``scope``, persist/audit the decision, and mark FOUND."""
+        """Match within ``scope`` and persist a proposal without attendance writes."""
         roster = list(scope.candidate_student_profile_ids)
         outcome = await MatchingService(self._session, settings=self._settings).match_probe(
             probe_embedding=probe_embedding,
@@ -203,27 +234,6 @@ class RecognitionAttendanceService:
                 },
             )
 
-        attendance_record_id: uuid.UUID | None = None
-        if outcome.status is MatchStatus.FOUND:
-            if matched_id is None:  # pragma: no cover - MatchStatus invariant
-                raise RuntimeError("FOUND recognition result has no matched student")
-            attendance_record_id = await self._mark_present(
-                session=self._session,
-                current_user=current_user,
-                classroom_id=scope.classroom_id,
-                subject_id=scope.subject_id,
-                attendance_date=scope.attendance_date,
-                student_profile_id=matched_id,
-                request_id=request_id,
-            )
-            async with service_transaction(self._session):
-                persisted = await self._attempts.get_by_id(attempt.id, for_update=True)
-                if persisted is None:  # pragma: no cover - same-request invariant
-                    raise RuntimeError("recognition attempt disappeared before attendance linkage")
-                await self._attempts.set_attendance_record(
-                    persisted, attendance_record_id=attendance_record_id
-                )
-
         return RecognitionAttemptOutcome(
             attempt_id=attempt.id,
             classroom_id=scope.classroom_id,
@@ -231,8 +241,184 @@ class RecognitionAttendanceService:
             attendance_date=scope.attendance_date,
             decision=outcome.status,
             matched_student_profile_id=matched_id,
-            attendance_record_id=attendance_record_id,
+            attendance_record_id=None,
         )
+
+    async def create_review(
+        self,
+        *,
+        current_user: User,
+        scope: AuthorizedRecognitionScope,
+        probe_embeddings: list[EmbeddingVector],
+        request_id: str | None = None,
+    ) -> RecognitionReviewOutcome:
+        """Create one review and one non-writing proposal per detected face."""
+        roster = list(scope.candidate_student_profile_ids)
+        matches = []
+        for embedding in probe_embeddings:
+            matches.append(
+                await MatchingService(self._session, settings=self._settings).match_probe(
+                    probe_embedding=embedding,
+                    candidate_student_profile_ids=roster,
+                    actor=current_user,
+                    request_id=request_id,
+                )
+            )
+
+        seen_students: set[uuid.UUID] = set()
+        proposals: list[RecognitionReviewProposalOutcome] = []
+        async with service_transaction(self._session):
+            review = await self._reviews.create(
+                actor_user_id=current_user.id,
+                classroom_id=scope.classroom_id,
+                subject_id=scope.subject_id,
+                attendance_date=scope.attendance_date,
+                candidate_student_profile_ids=roster,
+                face_count=len(matches),
+            )
+            for face_index, outcome in enumerate(matches):
+                matched_id = outcome.matched_student_profile_id
+                if outcome.status is MatchStatus.FOUND and matched_id not in roster:
+                    raise RecognitionAttendanceMatchOutsideRosterError()
+                is_duplicate = matched_id is not None and matched_id in seen_students
+                if matched_id is not None:
+                    seen_students.add(matched_id)
+                attempt = await self._attempts.create(
+                    review_id=review.id,
+                    face_index=face_index,
+                    is_duplicate=is_duplicate,
+                    actor_user_id=current_user.id,
+                    classroom_id=scope.classroom_id,
+                    subject_id=scope.subject_id,
+                    attendance_date=scope.attendance_date,
+                    decision=outcome.status,
+                    matched_student_profile_id=matched_id,
+                    candidate_student_profile_ids=roster,
+                )
+                await self._audit_logs.create(
+                    actor_user_id=current_user.id,
+                    action=ACTION_RECOGNITION_ATTENDANCE_DECISION,
+                    outcome=AuditOutcome.SUCCESS,
+                    entity_type=_ENTITY_TYPE_RECOGNITION_ATTEMPT,
+                    entity_id=attempt.id,
+                    classroom_id=scope.classroom_id,
+                    subject_id=scope.subject_id,
+                    request_id=request_id,
+                    event_metadata={
+                        "recognition_attempt_id": str(attempt.id),
+                        "recognition_review_id": str(review.id),
+                        "recognition_decision": outcome.status.value,
+                        "matched_student_profile_id": str(matched_id) if matched_id else None,
+                        "face_index": face_index,
+                        "is_duplicate": is_duplicate,
+                        "candidate_count": len(roster),
+                    },
+                )
+                proposals.append(
+                    RecognitionReviewProposalOutcome(
+                        attempt_id=attempt.id,
+                        face_index=face_index,
+                        decision=outcome.status,
+                        matched_student_profile_id=matched_id,
+                        best_similarity=outcome.best_similarity,
+                        is_duplicate=is_duplicate,
+                    )
+                )
+
+        return RecognitionReviewOutcome(
+            review_id=review.id,
+            classroom_id=scope.classroom_id,
+            subject_id=scope.subject_id,
+            attendance_date=scope.attendance_date,
+            face_count=len(matches),
+            proposals=tuple(proposals),
+        )
+
+    async def confirm_review(
+        self,
+        *,
+        current_user: User,
+        review_id: uuid.UUID,
+        records: list[BulkAttendanceRecordIn],
+        request_id: str | None = None,
+    ) -> RecognitionReviewConfirmationOutcome:
+        """Persist only the teacher-reviewed statuses through AttendanceService."""
+        normalized = sorted(
+            ((record.student_profile_id, record.status) for record in records),
+            key=lambda item: str(item[0]),
+        )
+        serialized = [
+            {"student_profile_id": str(student_id), "status": status.value}
+            for student_id, status in normalized
+        ]
+        async with service_transaction(self._session):
+            review = await self._reviews.get_by_id(review_id, for_update=True)
+            if review is None:
+                raise RecognitionAttendanceReviewNotFoundError()
+            await AttendanceReadService(self._session).authorize_scope(
+                current_user,
+                classroom_id=review.classroom_id,
+                subject_id=review.subject_id,
+                request_id=request_id,
+                action=ACTION_RECOGNITION_ATTENDANCE_CONFIRMATION,
+            )
+            current_profiles = await self._students.list_by_classroom(review.classroom_id)
+            current_roster = {profile.id for profile in current_profiles if profile.is_active}
+            original_roster = set(review.candidate_student_profile_ids)
+            if any(
+                student_id not in current_roster or student_id not in original_roster
+                for student_id, _ in normalized
+            ):
+                raise RecognitionAttendanceStudentNotInRosterError()
+
+            if review.confirmed_at is not None:
+                if review.confirmed_records != serialized:
+                    raise RecognitionAttendanceReviewConfirmationConflictError()
+                return RecognitionReviewConfirmationOutcome(
+                    review_id=review.id,
+                    attendance_record_ids=tuple(review.attendance_record_ids or []),
+                    confirmed_records=tuple(normalized),
+                )
+
+            session_factory = _independent_session_factory(self._session)
+            async with session_factory() as attendance_session:
+                result = await AttendanceService(attendance_session).bulk_save(
+                    current_user=current_user,
+                    payload=BulkAttendanceRequest(
+                        classroom_id=review.classroom_id,
+                        subject_id=review.subject_id,
+                        attendance_date=review.attendance_date,
+                        records=records,
+                    ),
+                    request_id=request_id,
+                )
+
+            await self._reviews.confirm(
+                review,
+                confirmed_by_user_id=current_user.id,
+                confirmed_at=datetime.now(UTC),
+                confirmed_records=serialized,
+                attendance_record_ids=result.record_ids,
+            )
+            await self._audit_logs.create(
+                actor_user_id=current_user.id,
+                action=ACTION_RECOGNITION_ATTENDANCE_CONFIRMATION,
+                outcome=AuditOutcome.SUCCESS,
+                entity_type="recognition_attendance_review",
+                entity_id=review.id,
+                classroom_id=review.classroom_id,
+                subject_id=review.subject_id,
+                request_id=request_id,
+                event_metadata={
+                    "recognition_review_id": str(review.id),
+                    "confirmed_record_count": len(records),
+                },
+            )
+            return RecognitionReviewConfirmationOutcome(
+                review_id=review.id,
+                attendance_record_ids=tuple(result.record_ids),
+                confirmed_records=tuple(normalized),
+            )
 
     async def confirm_attempt(
         self,
@@ -242,7 +428,7 @@ class RecognitionAttendanceService:
         student_profile_id: uuid.UUID,
         request_id: str | None = None,
     ) -> RecognitionConfirmationOutcome:
-        """Explicitly confirm UNKNOWN/AMBIGUOUS under a locked, re-authorized attempt."""
+        """Explicitly confirm any proposal under a locked, re-authorized attempt."""
         async with service_transaction(self._session):
             attempt = await self._attempts.get_by_id(attempt_id, for_update=True)
             if attempt is None:
@@ -264,18 +450,6 @@ class RecognitionAttendanceService:
                 request_id=request_id,
                 action=ACTION_RECOGNITION_ATTENDANCE_CONFIRMATION,
             )
-
-            if attempt.decision is MatchStatus.FOUND:
-                await self._audit_invalid_confirmation(
-                    current_user=current_user,
-                    attempt_id=attempt.id,
-                    classroom_id=attempt.classroom_id,
-                    subject_id=attempt.subject_id,
-                    selected_student_profile_id=student_profile_id,
-                    request_id=request_id,
-                    reason_code=_REASON_DECISION_NOT_CONFIRMABLE,
-                )
-                raise RecognitionAttendanceConfirmationNotAllowedError()
 
             current_profiles = await self._students.list_by_classroom(attempt.classroom_id)
             current_roster = {profile.id for profile in current_profiles if profile.is_active}
@@ -458,4 +632,7 @@ __all__ = [
     "RecognitionAttemptOutcome",
     "RecognitionAttendanceService",
     "RecognitionConfirmationOutcome",
+    "RecognitionReviewConfirmationOutcome",
+    "RecognitionReviewOutcome",
+    "RecognitionReviewProposalOutcome",
 ]

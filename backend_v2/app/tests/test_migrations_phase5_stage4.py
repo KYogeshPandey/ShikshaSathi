@@ -89,6 +89,7 @@ def test_phase5_stage4_migration_round_trip() -> None:
         return
 
     try:
+        command.downgrade(cfg, STAGE4_HEAD)
         assert _revision() == STAGE4_HEAD
         assert _table_exists() is True
         assert _enum_exists() is True

@@ -44,13 +44,15 @@ The production frontend proxies `/health/*` to the internal backend.
 
 | Method | Path | Authentication | Purpose |
 |---|---|---|---|
-| POST | `/api/v1/auth/login` | None | Email/password login; returns user + access token and sets refresh cookie. |
+| POST | `/api/v1/auth/login` | None | Email/password login. With OTP disabled, returns the existing user/token response and refresh cookie; with OTP enabled, returns only a challenge. |
+| POST | `/api/v1/auth/otp/verify` | None | Consumes a valid six-digit login challenge, then issues the existing access token + refresh session. |
+| POST | `/api/v1/auth/otp/resend` | None | Replaces an eligible challenge after the server-enforced cooldown. |
 | POST | `/api/v1/auth/refresh` | Refresh cookie + same-origin check | Rotates refresh session and returns a new access token. |
 | POST | `/api/v1/auth/logout` | Optional refresh cookie + same-origin check | Idempotently revokes/clears the current refresh session. |
 | GET | `/api/v1/auth/me` | Access token | Safe current-user representation. |
 
-Login is fixed-window rate-limited by client address. The default permits five
-attempts per 60 seconds; a blocked request returns 429,
+Login, OTP verification, and OTP resend use independent fixed-window limits by
+client address. A blocked request returns 429,
 `RATE_LIMIT_EXCEEDED`, and `Retry-After` without recording credentials or the
 request body.
 
@@ -62,6 +64,12 @@ Login request:
 
 No public registration endpoint exists. The first admin is created with
 `python -m scripts.bootstrap_admin` after migrations.
+
+OTP is disabled by default. When enabled, challenges expire, are one-time use,
+have bounded attempts, and store only a keyed digest. No access token or
+refresh session exists before verification succeeds. Invalid credentials keep
+the same generic failure response. Any syntactically valid registered email
+domain is accepted; there is no school-domain rule.
 
 ## Academic resources
 
@@ -156,12 +164,16 @@ Teacher recognition-attendance routes:
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/v1/face-recognition/attendance/attempts` | Exact-scope image attempt; `FOUND` writes via AttendanceService only. |
-| POST | `/api/v1/face-recognition/attendance/attempts/{attempt_id}/confirm` | Explicitly confirm authorized roster member for UNKNOWN/AMBIGUOUS. |
+| POST | `/api/v1/face-recognition/attendance/attempts` | Compatibility single-face proposal; never writes before explicit confirmation. |
+| POST | `/api/v1/face-recognition/attendance/attempts/{attempt_id}/confirm` | Explicitly confirm an authorized roster member for any proposal. |
+| POST | `/api/v1/face-recognition/attendance/reviews` | Bounded multi-face image processing; returns non-writing proposals for teacher review. |
+| POST | `/api/v1/face-recognition/attendance/reviews/{review_id}/confirm` | Persists only the teacher-selected present/absent records through `AttendanceService`. |
 
 Images and aligned crops are never returned. Embeddings are never returned or
 logged. Candidate scope is server-derived from the active authorized roster;
-there is no institution-wide matching fallback.
+there is no institution-wide matching fallback. Unknown, ambiguous, duplicate,
+missed, and unmarked students are never inferred absent. The attendance image
+and per-request face embeddings are processed in memory and not retained.
 
 ## Reports and exports
 

@@ -393,6 +393,33 @@ class RecognitionAttendanceRosterEmptyError(FaceRecognitionError):
         super().__init__("The authorized classroom has no active students to recognize.")
 
 
+class RecognitionAttendanceTooManyFacesError(FaceRecognitionError):
+    code = "RECOGNITION_ATTENDANCE_TOO_MANY_FACES"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def __init__(self, max_faces: int) -> None:
+        super().__init__(
+            "The attendance image contains more faces than this review allows.",
+            details={"max_faces": max_faces},
+        )
+
+
+class RecognitionAttendanceReviewNotFoundError(FaceRecognitionError):
+    code = "RECOGNITION_ATTENDANCE_REVIEW_NOT_FOUND"
+    status_code = status.HTTP_404_NOT_FOUND
+
+    def __init__(self) -> None:
+        super().__init__("Recognition attendance review not found.")
+
+
+class RecognitionAttendanceReviewConfirmationConflictError(FaceRecognitionError):
+    code = "RECOGNITION_ATTENDANCE_REVIEW_CONFIRMATION_CONFLICT"
+    status_code = status.HTTP_409_CONFLICT
+
+    def __init__(self) -> None:
+        super().__init__("This review was already confirmed with different attendance statuses.")
+
+
 class RecognitionAttendanceAttemptNotFoundError(FaceRecognitionError):
     code = "RECOGNITION_ATTENDANCE_ATTEMPT_NOT_FOUND"
     status_code = status.HTTP_404_NOT_FOUND

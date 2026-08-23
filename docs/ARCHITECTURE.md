@@ -140,6 +140,24 @@ Errors bubble up as typed exceptions (see §7) and are translated to a consisten
 - A narrowly-scoped, read-only reconciliation report (`modules/biometric_enrollment/reconciliation.py`) detects database/filesystem drift (an active-status row with no file, an orphaned file with no row, a sample stuck mid-transition) without ever repairing it automatically — consistent with this application having no background-worker architecture to run an automated repair job on.
 - **No model weight of any kind (detector `.onnx` or embedder `.dat`) is downloaded, vendored, or committed anywhere in this repository or any ZIP built from it.** `Settings.FACE_DETECTOR_MODEL_PATH`/`FACE_EMBEDDER_MODEL_PATH` are deployer-supplied filesystem paths to files obtained independently, with optional SHA-256 integrity verification (`app/modules/face_recognition/model_artifacts.py`).
 
+### Milestone 4 proposal and OTP boundaries
+
+- Image attendance is proposal-first: one bounded upload may yield multiple
+  face proposals inside a persisted non-biometric review envelope. No
+  decision, including `FOUND`, writes attendance. Only the authorized
+  teacher's explicit confirmation crosses into the existing
+  `AttendanceService`; unmarked, missed, unknown, ambiguous, and duplicate
+  faces remain non-writing. Uploaded classroom images and per-request
+  embeddings stay in memory.
+- `LOGIN_OTP_ENABLED=false` leaves the Phase 2 login contract unchanged. When
+  enabled, credentials create a challenge containing only an HMAC-SHA256
+  digest and lifecycle metadata. The existing access-token/refresh-session
+  issuer is called only after the challenge is consumed successfully.
+- OTP expiry, one-time use, attempts, resend replacement/cooldown, and endpoint
+  limits are server-side. SMTP is environment configured; the explicit
+  development-log adapter is rejected in production, and OTPs are never
+  returned in API responses.
+
 ## 10. Frontend state & API flow
 
 - Server state (anything from the API) lives in TanStack Query, not component state or Context — replaces the legacy pattern of manual `useState`/`useEffect` + direct axios calls with no caching, retry, or 401-handling (AUDIT §3.4).

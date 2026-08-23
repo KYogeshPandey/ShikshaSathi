@@ -38,7 +38,7 @@ def test_only_stage4_orchestrator_imports_attendance_service() -> None:
     assert importers == ["recognition_attendance_service.py"]
 
 
-def test_stage4_orchestrator_invokes_attendance_service_bulk_save() -> None:
+def test_stage4_orchestrator_uses_attendance_service_for_both_confirmation_paths() -> None:
     path = next(
         path
         for path in _face_recognition_python_files()
@@ -52,4 +52,4 @@ def test_stage4_orchestrator_invokes_attendance_service_bulk_save() -> None:
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "bulk_save"
     ]
-    assert len(calls) == 1
+    assert len(calls) == 2

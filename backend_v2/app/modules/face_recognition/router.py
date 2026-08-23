@@ -22,10 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
+from app.modules.attendance.schemas import BulkAttendanceRecordIn
 from app.modules.auth.dependencies import require_roles
 from app.modules.biometric_enrollment.errors import EnrollmentSampleNotFoundError
 from app.modules.biometric_enrollment.repository import BiometricSampleRepository
-from app.modules.face_recognition.domain import EmbeddingVector, MatchStatus
+from app.modules.face_recognition.domain import EmbeddingVector
 from app.modules.face_recognition.errors import MatchProbeImageTooLargeError
 from app.modules.face_recognition.health import get_face_recognition_health
 from app.modules.face_recognition.image_codec import ndarray_to_decoded_image
@@ -34,7 +35,7 @@ from app.modules.face_recognition.match_probe_validation import (
     validate_probe_image_bytes,
 )
 from app.modules.face_recognition.matching_service import MatchingService
-from app.modules.face_recognition.pipeline import detect_align_embed
+from app.modules.face_recognition.pipeline import detect_align_embed, detect_align_embed_many
 from app.modules.face_recognition.processing_service import SampleProcessingService
 from app.modules.face_recognition.recognition_attendance_service import (
     RecognitionAttendanceService,
@@ -48,6 +49,10 @@ from app.modules.face_recognition.schemas import (
     RecognitionAttendanceAttemptRead,
     RecognitionAttendanceConfirmationRead,
     RecognitionAttendanceConfirmationRequest,
+    RecognitionAttendanceProposalRead,
+    RecognitionAttendanceReviewConfirmationRead,
+    RecognitionAttendanceReviewConfirmationRequest,
+    RecognitionAttendanceReviewRead,
     SampleProcessingStatusRead,
 )
 from app.modules.users.models import User, UserRole
@@ -214,6 +219,18 @@ def _validate_and_embed_probe_sync(
     return detect_align_embed(decoded_image, settings=settings)
 
 
+def _validate_and_embed_attendance_sync(
+    data: bytes, *, settings: Settings, declared_content_type: str | None
+) -> list[EmbeddingVector]:
+    """Validate once, embed every detected face, and retain no image data."""
+    validate_probe_image_bytes(data, settings=settings, declared_content_type=declared_content_type)
+    with Image.open(BytesIO(data)) as image:
+        rgb_image = image.convert("RGB")
+        array = np.asarray(rgb_image, dtype=np.uint8)
+    decoded_image = ndarray_to_decoded_image(array, color_format="rgb")
+    return detect_align_embed_many(decoded_image, settings=settings)
+
+
 @router.post("/match-probe", response_model=MatchProbeResult)
 async def match_probe(
     admin: AdminUser,
@@ -352,7 +369,105 @@ async def create_recognition_attendance_attempt(
         decision=outcome.decision,
         matched_student_profile_id=outcome.matched_student_profile_id,
         attendance_record_id=outcome.attendance_record_id,
-        requires_confirmation=outcome.decision is not MatchStatus.FOUND,
+        requires_confirmation=True,
+    )
+
+
+@router.post(
+    "/attendance/reviews",
+    response_model=RecognitionAttendanceReviewRead,
+)
+async def create_recognition_attendance_review(
+    current_user: AdminOrTeacher,
+    session: Session,
+    request: Request,
+    classroom_id: Annotated[uuid.UUID, Form()],
+    subject_id: Annotated[uuid.UUID, Form()],
+    attendance_date: Annotated[date, Form()],
+    file: Annotated[UploadFile, File(description="A still classroom image (JPEG/PNG/WEBP).")],
+) -> RecognitionAttendanceReviewRead:
+    """Return bounded multi-face proposals; never write attendance."""
+    settings = get_settings()
+    service = RecognitionAttendanceService(session, settings=settings)
+    request_id = _request_id(request)
+    scope = await service.resolve_authorized_scope(
+        current_user=current_user,
+        classroom_id=classroom_id,
+        subject_id=subject_id,
+        attendance_date=attendance_date,
+        request_id=request_id,
+    )
+    data = await file.read(settings.MAX_ATTENDANCE_IMAGE_BYTES + 1)
+    declared_content_type = file.content_type
+    await file.close()
+    if len(data) > settings.MAX_ATTENDANCE_IMAGE_BYTES:
+        raise MatchProbeImageTooLargeError(settings.MAX_ATTENDANCE_IMAGE_BYTES)
+    embeddings = await asyncio.to_thread(
+        _validate_and_embed_attendance_sync,
+        data,
+        settings=settings,
+        declared_content_type=declared_content_type,
+    )
+    outcome = await service.create_review(
+        current_user=current_user,
+        scope=scope,
+        probe_embeddings=embeddings,
+        request_id=request_id,
+    )
+    return RecognitionAttendanceReviewRead(
+        review_id=outcome.review_id,
+        classroom_id=outcome.classroom_id,
+        subject_id=outcome.subject_id,
+        attendance_date=outcome.attendance_date,
+        face_count=outcome.face_count,
+        proposals=[
+            RecognitionAttendanceProposalRead(
+                attempt_id=proposal.attempt_id,
+                face_index=proposal.face_index,
+                decision=proposal.decision,
+                matched_student_profile_id=proposal.matched_student_profile_id,
+                best_similarity=proposal.best_similarity,
+                is_duplicate=proposal.is_duplicate,
+            )
+            for proposal in outcome.proposals
+        ],
+    )
+
+
+@router.post(
+    "/attendance/reviews/{review_id}/confirm",
+    response_model=RecognitionAttendanceReviewConfirmationRead,
+)
+async def confirm_recognition_attendance_review(
+    review_id: uuid.UUID,
+    payload: RecognitionAttendanceReviewConfirmationRequest,
+    current_user: AdminOrTeacher,
+    session: Session,
+    request: Request,
+) -> RecognitionAttendanceReviewConfirmationRead:
+    """Persist only explicitly reviewed present/absent statuses."""
+    outcome = await RecognitionAttendanceService(session).confirm_review(
+        current_user=current_user,
+        review_id=review_id,
+        records=[
+            BulkAttendanceRecordIn(
+                student_profile_id=record.student_profile_id,
+                status=record.status,
+            )
+            for record in payload.records
+        ],
+        request_id=_request_id(request),
+    )
+    return RecognitionAttendanceReviewConfirmationRead(
+        review_id=outcome.review_id,
+        attendance_record_ids=list(outcome.attendance_record_ids),
+        confirmed_records=[
+            {
+                "student_profile_id": student_id,
+                "status": status,
+            }
+            for student_id, status in outcome.confirmed_records
+        ],
     )
 
 
@@ -367,7 +482,7 @@ async def confirm_recognition_attendance_attempt(
     session: Session,
     request: Request,
 ) -> RecognitionAttendanceConfirmationRead:
-    """Explicitly confirm an UNKNOWN or AMBIGUOUS decision."""
+    """Explicitly confirm a single-face proposal (including FOUND)."""
     outcome = await RecognitionAttendanceService(session).confirm_attempt(
         current_user=current_user,
         attempt_id=attempt_id,

@@ -347,6 +347,33 @@ export interface RecognitionAttendanceConfirmation {
   attendance_record_id: string;
 }
 
+export interface RecognitionAttendanceProposal {
+  attempt_id: string;
+  face_index: number;
+  decision: RecognitionDecision;
+  matched_student_profile_id: string | null;
+  best_similarity: number | null;
+  is_duplicate: boolean;
+}
+
+export interface RecognitionAttendanceReview {
+  review_id: string;
+  classroom_id: string;
+  subject_id: string;
+  attendance_date: string;
+  face_count: number;
+  proposals: RecognitionAttendanceProposal[];
+}
+
+export interface RecognitionAttendanceReviewConfirmation {
+  review_id: string;
+  attendance_record_ids: string[];
+  confirmed_records: Array<{
+    student_profile_id: string;
+    status: AttendanceStatus;
+  }>;
+}
+
 export type BulkImportEntity =
   | "classrooms"
   | "subjects"

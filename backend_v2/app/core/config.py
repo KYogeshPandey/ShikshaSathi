@@ -34,7 +34,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Known-bad SECRET_KEY values that must never be accepted, regardless of
@@ -163,6 +163,27 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     REFRESH_TOKEN_COOKIE_DOMAIN: str | None = None
 
+    # --- Optional email OTP login (Milestone 4C) -----------------------------
+    # Disabled by default, preserving the current production login until an
+    # operator deliberately configures a delivery adapter.
+    LOGIN_OTP_ENABLED: bool = False
+    LOGIN_OTP_TTL_SECONDS: int = Field(default=600, ge=300, le=900)
+    LOGIN_OTP_MAX_ATTEMPTS: int = Field(default=5, ge=1, le=10)
+    LOGIN_OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, ge=30, le=300)
+    OTP_VERIFY_RATE_LIMIT_ATTEMPTS: int = Field(default=10, ge=1, le=100)
+    OTP_VERIFY_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
+    OTP_RESEND_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=50)
+    OTP_RESEND_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
+    OTP_EMAIL_PROVIDER: Literal["none", "smtp", "development_log"] = "none"
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = Field(default=None, repr=False)
+    SMTP_FROM_EMAIL: EmailStr | None = None
+    SMTP_STARTTLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=60)
+
     # --- Admin bootstrap (Phase 2) -----------------------------------------------
     # Consumed ONLY by scripts/bootstrap_admin.py — never read by the
     # running API itself, and never given a real value here or in any
@@ -170,6 +191,19 @@ class Settings(BaseSettings):
     # (email via input(), password via getpass — never echoed or logged).
     ADMIN_BOOTSTRAP_EMAIL: str | None = None
     ADMIN_BOOTSTRAP_PASSWORD: str | None = Field(default=None, repr=False)
+
+    # --- Reproducible demo dataset (Milestone 4A) -----------------------------
+    # Consumed only by scripts/seed_demo_data.py. Demo identities default to
+    # non-deliverable `.example` addresses in the seed manifest; these narrow
+    # overrides make selected accounts usable with a real OTP inbox without
+    # committing personal addresses. Production writes require an explicit,
+    # operator-controlled opt-in and are never triggered at application startup.
+    DEMO_SEED_PASSWORD: str | None = Field(default=None, repr=False)
+    DEMO_SEED_ALLOW_PRODUCTION: bool = False
+    DEMO_ADMIN_EMAIL: str = "admin@demo.shikshasathi.example"
+    DEMO_TEACHER_ONE_EMAIL: str = "teacher.one@demo.shikshasathi.example"
+    DEMO_TEACHER_TWO_EMAIL: str = "teacher.two@demo.shikshasathi.example"
+    DEMO_STUDENT_ONE_EMAIL: str = "student.01@demo.shikshasathi.example"
 
     # --- Postgres ------------------------------------------------------------------
     # Consumed directly by the `postgres` Compose service; DATABASE_URL
@@ -250,6 +284,8 @@ class Settings(BaseSettings):
     # outside anything served statically. See docs/BIOMETRIC_DATA_POLICY.md.
     BIOMETRIC_STORAGE_ROOT: str = "var/biometric_data"
     MAX_ENROLLMENT_IMAGE_BYTES: int = 5 * 1024 * 1024
+    MAX_ATTENDANCE_IMAGE_BYTES: int = Field(default=8 * 1024 * 1024, ge=1024, le=20 * 1024 * 1024)
+    MAX_ATTENDANCE_FACES_PER_IMAGE: int = Field(default=40, ge=1, le=200)
 
     # --- Face recognition (Phase 5 Stage 3: model artifacts + processing) ------
     # Deployer-supplied filesystem paths to model files obtained OUTSIDE
@@ -626,6 +662,30 @@ class Settings(BaseSettings):
                     "REFRESH_TOKEN_COOKIE_SECURE must be true when APP_ENV=production "
                     "— the refresh-token cookie must never be sent over plain HTTP."
                 )
+            if self.OTP_EMAIL_PROVIDER == "development_log":
+                raise ValueError("OTP_EMAIL_PROVIDER=development_log is forbidden in production.")
+
+        if self.LOGIN_OTP_ENABLED:
+            if self.OTP_EMAIL_PROVIDER == "none":
+                raise ValueError(
+                    "LOGIN_OTP_ENABLED=true requires an explicitly configured email provider."
+                )
+            if self.OTP_EMAIL_PROVIDER == "smtp":
+                if not self.SMTP_HOST or self.SMTP_FROM_EMAIL is None:
+                    raise ValueError(
+                        "SMTP_HOST and SMTP_FROM_EMAIL are required when OTP SMTP "
+                        "delivery is enabled."
+                    )
+                if bool(self.SMTP_USERNAME) != bool(self.SMTP_PASSWORD):
+                    raise ValueError(
+                        "SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be unset."
+                    )
+                if self.SMTP_STARTTLS and self.SMTP_USE_SSL:
+                    raise ValueError("SMTP_STARTTLS and SMTP_USE_SSL cannot both be enabled.")
+                if self.APP_ENV is Environment.PRODUCTION and not (
+                    self.SMTP_STARTTLS or self.SMTP_USE_SSL
+                ):
+                    raise ValueError("Production OTP SMTP delivery requires TLS.")
         return self
 
 

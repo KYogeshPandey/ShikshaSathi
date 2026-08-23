@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecognitionAttendancePage } from "./RecognitionAttendancePage";
@@ -15,13 +15,13 @@ const mocks = vi.hoisted(() => ({
   listSubjects: vi.fn(),
   getRoster: vi.fn(),
   saveBulk: vi.fn(),
-  createAttempt: vi.fn(),
-  confirm: vi.fn(),
+  createReview: vi.fn(),
+  confirmReview: vi.fn(),
 }));
 
 vi.mock("../api/academics", () => ({ academicsApi: { listClassrooms: mocks.listClassrooms, listSubjects: mocks.listSubjects } }));
 vi.mock("../api/attendance", () => ({ attendanceApi: { getRoster: mocks.getRoster, saveBulk: mocks.saveBulk } }));
-vi.mock("../api/recognition", () => ({ recognitionApi: { createAttempt: mocks.createAttempt, confirm: mocks.confirm } }));
+vi.mock("../api/recognition", () => ({ recognitionApi: { createReview: mocks.createReview, confirmReview: mocks.confirmReview } }));
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -33,7 +33,7 @@ beforeEach(() => {
   mocks.listClassrooms.mockResolvedValue({ items: [{ id: ids.classroom, name: "Grade 7", code: "G7" }], total: 1, limit: 100, offset: 0 });
   mocks.listSubjects.mockResolvedValue({ items: [{ id: ids.subject, name: "Math", code: "MATH" }], total: 1, limit: 100, offset: 0 });
   mocks.getRoster.mockResolvedValue([{ student_profile_id: ids.student, roll_number: "7" }]);
-  mocks.confirm.mockResolvedValue({ confirmed_student_profile_id: ids.student });
+  mocks.confirmReview.mockResolvedValue({ review_id: "review-id", attendance_record_ids: ["record-id"], confirmed_records: [] });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -46,48 +46,54 @@ async function submitImage() {
   await user.selectOptions(screen.getByLabelText("Subject"), ids.subject);
   const image = new File(["face"], "face.jpg", { type: "image/jpeg" });
   await user.upload(screen.getByLabelText("Image file fallback"), image);
-  await user.click(screen.getByRole("button", { name: "Submit recognition attempt" }));
+  await user.click(screen.getByRole("button", { name: "Create review" }));
   return image;
 }
 
 describe("recognition attendance", () => {
-  it("treats FOUND as already written and never sends a second bulk write", async () => {
-    mocks.createAttempt.mockResolvedValue({
-      attempt_id: "attempt-found",
+  it("shows FOUND as a proposal and writes only after explicit review confirmation", async () => {
+    mocks.createReview.mockResolvedValue({
+      review_id: "review-found",
       classroom_id: ids.classroom,
       subject_id: ids.subject,
       attendance_date: "2026-08-16",
-      decision: "found",
-      matched_student_profile_id: ids.student,
-      attendance_record_id: "record-id",
-      requires_confirmation: false,
+      face_count: 1,
+      proposals: [{ attempt_id: "attempt-found", face_index: 0, decision: "found", matched_student_profile_id: ids.student, best_similarity: 0.99, is_duplicate: false }],
     });
     const image = await submitImage();
 
-    expect(await screen.findByRole("heading", { name: "Match found" })).toBeVisible();
-    expect(mocks.createAttempt).toHaveBeenCalledWith(expect.objectContaining({ classroomId: ids.classroom, subjectId: ids.subject, file: image }));
+    expect(await screen.findByRole("heading", { name: "Review proposals" })).toBeVisible();
+    expect(mocks.createReview).toHaveBeenCalledWith(expect.objectContaining({ classroomId: ids.classroom, subjectId: ids.subject, file: image }));
     expect(mocks.saveBulk).not.toHaveBeenCalled();
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.confirmReview).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm reviewed attendance" }));
+    await waitFor(() => expect(mocks.confirmReview).toHaveBeenCalledWith("review-found", [
+      { student_profile_id: ids.student, status: "present" },
+    ]));
   });
 
-  it("allows UNKNOWN confirmation only from the exact authorized roster", async () => {
-    mocks.createAttempt.mockResolvedValue({
-      attempt_id: "attempt-unknown",
+  it("keeps unknown faces and missed roster students unmarked until the teacher edits them", async () => {
+    mocks.createReview.mockResolvedValue({
+      review_id: "review-unknown",
       classroom_id: ids.classroom,
       subject_id: ids.subject,
       attendance_date: "2026-08-16",
-      decision: "unknown",
-      matched_student_profile_id: null,
-      attendance_record_id: null,
-      requires_confirmation: true,
+      face_count: 1,
+      proposals: [{ attempt_id: "attempt-unknown", face_index: 0, decision: "unknown", matched_student_profile_id: null, best_similarity: 0.4, is_duplicate: false }],
     });
     await submitImage();
 
-    await userEvent.selectOptions(await screen.findByLabelText("Confirm student"), ids.student);
-    await userEvent.click(screen.getByRole("button", { name: "Confirm attendance" }));
-    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith("attempt-unknown", ids.student));
+    const attendanceGroup = await screen.findByRole("group", { name: "Attendance for roll 7" });
+    expect(within(attendanceGroup).getByRole("button", { name: "unmarked" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Confirm reviewed attendance" })).toBeDisabled();
+    await userEvent.click(within(attendanceGroup).getByRole("button", { name: "present" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm reviewed attendance" }));
+    await waitFor(() => expect(mocks.confirmReview).toHaveBeenCalledWith("review-unknown", [
+      { student_profile_id: ids.student, status: "present" },
+    ]));
     expect(mocks.getRoster).toHaveBeenCalledWith({ classroomId: ids.classroom, subjectId: ids.subject });
-    expect(await screen.findByText("Attendance confirmation saved.")).toBeVisible();
+    expect(await screen.findByText("Reviewed attendance saved.")).toBeVisible();
   });
 
   it("stops every camera track when the page unmounts", async () => {

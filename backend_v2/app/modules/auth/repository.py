@@ -13,7 +13,8 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.auth.models import RefreshSession
+from app.modules.auth.models import OtpChallenge, OtpPurpose, RefreshSession
+from app.modules.users.models import User
 
 
 class RefreshSessionRepository:
@@ -79,3 +80,92 @@ class RefreshSessionRepository:
         )
         await self._session.execute(stmt)
         await self._session.flush()
+
+
+class OtpChallengeRepository:
+    """Persistence boundary for expiring, one-time OTP challenges."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_id(
+        self,
+        challenge_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> OtpChallenge | None:
+        stmt = select(OtpChallenge).where(OtpChallenge.id == challenge_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def lock_user(self, user_id: uuid.UUID) -> None:
+        """Serialize challenge replacement for one user."""
+        await self._session.execute(select(User.id).where(User.id == user_id).with_for_update())
+
+    async def invalidate_active_for_user(
+        self,
+        *,
+        user_id: uuid.UUID,
+        purpose: OtpPurpose,
+        now: datetime,
+    ) -> None:
+        await self._session.execute(
+            update(OtpChallenge)
+            .where(
+                OtpChallenge.user_id == user_id,
+                OtpChallenge.purpose == purpose,
+                OtpChallenge.consumed_at.is_(None),
+                OtpChallenge.invalidated_at.is_(None),
+            )
+            .values(invalidated_at=now)
+        )
+        await self._session.flush()
+
+    async def create(
+        self,
+        *,
+        challenge_id: uuid.UUID,
+        user_id: uuid.UUID,
+        otp_hash: str,
+        expires_at: datetime,
+        max_attempts: int,
+        last_sent_at: datetime,
+    ) -> OtpChallenge:
+        challenge = OtpChallenge(
+            id=challenge_id,
+            user_id=user_id,
+            purpose=OtpPurpose.LOGIN,
+            otp_hash=otp_hash,
+            expires_at=expires_at,
+            max_attempts=max_attempts,
+            last_sent_at=last_sent_at,
+        )
+        self._session.add(challenge)
+        await self._session.flush()
+        return challenge
+
+    async def record_failed_attempt(
+        self,
+        challenge: OtpChallenge,
+        *,
+        now: datetime,
+    ) -> bool:
+        challenge.attempt_count += 1
+        exhausted = challenge.attempt_count >= challenge.max_attempts
+        if exhausted:
+            challenge.invalidated_at = now
+        await self._session.flush()
+        return exhausted
+
+    async def consume(self, challenge: OtpChallenge, *, now: datetime) -> None:
+        challenge.consumed_at = now
+        await self._session.flush()
+
+    async def invalidate(self, challenge: OtpChallenge, *, now: datetime) -> None:
+        challenge.invalidated_at = now
+        await self._session.flush()
+
+
+__all__ = ["OtpChallengeRepository", "RefreshSessionRepository"]

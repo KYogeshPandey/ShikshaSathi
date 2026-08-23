@@ -70,6 +70,8 @@ os.environ.setdefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 # process-wide counter from coupling otherwise-independent authentication
 # integration tests to execution order.
 os.environ.setdefault("LOGIN_RATE_LIMIT_ATTEMPTS", "1000")
+os.environ.setdefault("OTP_VERIFY_RATE_LIMIT_ATTEMPTS", "100")
+os.environ.setdefault("OTP_RESEND_RATE_LIMIT_ATTEMPTS", "50")
 # Secure cookies require HTTPS; TestClient / httpx talk plain HTTP.
 os.environ.setdefault("REFRESH_TOKEN_COOKIE_SECURE", "false")
 # Phase 5 Stage 2: isolate biometric file storage to a throwaway temp
@@ -160,6 +162,8 @@ _PHASE2_AND_PHASE3_TABLES_CHILD_FIRST: tuple[str, ...] = (
     # Phase 5 Stage 4: attempts reference users, classroom/subject,
     # student profiles, and (after a mark) attendance_records.
     "recognition_attendance_attempts",
+    "recognition_attendance_reviews",
+    "otp_challenges",
     # Phase 5 Stage 3: biometric_embeddings FKs to biometric_samples,
     # so it must be deleted first.
     "biometric_embeddings",

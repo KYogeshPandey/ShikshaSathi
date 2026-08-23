@@ -13,8 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.attendance.models import AttendanceStatus
 from app.modules.face_recognition.domain import MatchStatus, ProviderStatus
 
 
@@ -125,3 +126,55 @@ class RecognitionAttendanceConfirmationRead(BaseModel):
     decision: MatchStatus
     confirmed_student_profile_id: uuid.UUID
     attendance_record_id: uuid.UUID
+
+
+class RecognitionAttendanceProposalRead(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    attempt_id: uuid.UUID
+    face_index: int
+    decision: MatchStatus
+    matched_student_profile_id: uuid.UUID | None
+    best_similarity: float | None
+    is_duplicate: bool
+
+
+class RecognitionAttendanceReviewRead(BaseModel):
+    """In-memory recognition results plus a persisted, non-biometric review ID."""
+
+    model_config = ConfigDict(frozen=True)
+
+    review_id: uuid.UUID
+    classroom_id: uuid.UUID
+    subject_id: uuid.UUID
+    attendance_date: date
+    face_count: int
+    proposals: list[RecognitionAttendanceProposalRead]
+
+
+class RecognitionAttendanceReviewRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    student_profile_id: uuid.UUID
+    status: AttendanceStatus
+
+
+class RecognitionAttendanceReviewConfirmationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    records: list[RecognitionAttendanceReviewRecord] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _reject_duplicate_students(self) -> RecognitionAttendanceReviewConfirmationRequest:
+        student_ids = [record.student_profile_id for record in self.records]
+        if len(student_ids) != len(set(student_ids)):
+            raise ValueError("Each student may appear at most once in a review confirmation.")
+        return self
+
+
+class RecognitionAttendanceReviewConfirmationRead(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    review_id: uuid.UUID
+    attendance_record_ids: list[uuid.UUID]
+    confirmed_records: list[RecognitionAttendanceReviewRecord]

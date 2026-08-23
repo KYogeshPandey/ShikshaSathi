@@ -110,16 +110,14 @@ async def test_unknown_and_ambiguous_persist_decision_but_never_mark(decision: M
     }
 
 
-async def test_found_marks_exact_scope_and_links_attendance_record() -> None:
+async def test_found_is_only_a_proposal_until_explicit_confirmation() -> None:
     service = _service()
     actor = _user()
     matched_id = uuid.uuid4()
     scope = _scope(matched_id)
     attempt = SimpleNamespace(id=uuid.uuid4())
-    attendance_id = uuid.uuid4()
     service._attempts.create.return_value = attempt
-    service._attempts.get_by_id.return_value = attempt
-    service._mark_present = AsyncMock(return_value=attendance_id)
+    service._mark_present = AsyncMock()
     matching = SimpleNamespace(
         match_probe=AsyncMock(
             return_value=MatchOutcome(
@@ -148,19 +146,9 @@ async def test_found_marks_exact_scope_and_links_attendance_record() -> None:
             request_id="stage4-found",
         )
 
-    assert result.attendance_record_id == attendance_id
-    assert service._mark_present.await_args.kwargs == {
-        "session": service._session,
-        "current_user": actor,
-        "classroom_id": scope.classroom_id,
-        "subject_id": scope.subject_id,
-        "attendance_date": scope.attendance_date,
-        "student_profile_id": matched_id,
-        "request_id": "stage4-found",
-    }
-    service._attempts.set_attendance_record.assert_awaited_once_with(
-        attempt, attendance_record_id=attendance_id
-    )
+    assert result.attendance_record_id is None
+    service._mark_present.assert_not_awaited()
+    service._attempts.set_attendance_record.assert_not_awaited()
 
 
 async def test_mark_present_constructs_one_present_row_through_attendance_service() -> None:

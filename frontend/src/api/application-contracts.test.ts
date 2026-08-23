@@ -60,4 +60,36 @@ describe("Application API contracts", () => {
       { student_profile_id: "student-profile-id" },
     );
   });
+
+  it("creates and explicitly confirms a multi-face attendance review", async () => {
+    const post = vi.spyOn(apiClient, "post").mockResolvedValue({});
+    const image = new File(["classroom"], "classroom.jpg", { type: "image/jpeg" });
+
+    await recognitionApi.createReview({
+      classroomId: "classroom-id",
+      subjectId: "subject-id",
+      attendanceDate: "2026-08-23",
+      file: image,
+    });
+    await recognitionApi.confirmReview("review-id", [
+      { student_profile_id: "student-one", status: "present" },
+      { student_profile_id: "student-two", status: "absent" },
+    ]);
+
+    expect(post.mock.calls[0]?.[0]).toBe("/face-recognition/attendance/reviews");
+    const form = post.mock.calls[0]?.[1] as FormData;
+    expect(form.get("classroom_id")).toBe("classroom-id");
+    expect(form.get("subject_id")).toBe("subject-id");
+    expect(form.get("attendance_date")).toBe("2026-08-23");
+    expect(form.get("file")).toBe(image);
+    expect(post.mock.calls[1]).toEqual([
+      "/face-recognition/attendance/reviews/review-id/confirm",
+      {
+        records: [
+          { student_profile_id: "student-one", status: "present" },
+          { student_profile_id: "student-two", status: "absent" },
+        ],
+      },
+    ]);
+  });
 });

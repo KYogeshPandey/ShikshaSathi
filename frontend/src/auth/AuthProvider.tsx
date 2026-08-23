@@ -1,7 +1,13 @@
 import { useCallback, useEffect, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/auth";
-import type { AuthUser, LoginCredentials } from "../types/auth";
+import {
+  isOtpChallenge,
+  type AuthUser,
+  type LoginCredentials,
+  type LoginResult,
+  type OtpChallengeInfo,
+} from "../types/auth";
 import { AuthContext, authQueryKey, type AuthStatus } from "./authContext";
 import { authSession } from "./session";
 
@@ -30,12 +36,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 
   const login = useCallback(
-    async (credentials: LoginCredentials): Promise<AuthUser> => {
-      const user = await authApi.login(credentials);
+    async (credentials: LoginCredentials): Promise<LoginResult> => {
+      const result = await authApi.login(credentials);
+      if (!isOtpChallenge(result)) {
+        queryClient.setQueryData<AuthUser | null>(authQueryKey, result);
+      }
+      return result;
+    },
+    [queryClient],
+  );
+
+  const verifyOtp = useCallback(
+    async (challengeId: string, otp: string): Promise<AuthUser> => {
+      const user = await authApi.verifyOtp(challengeId, otp);
       queryClient.setQueryData<AuthUser | null>(authQueryKey, user);
       return user;
     },
     [queryClient],
+  );
+
+  const resendOtp = useCallback(
+    (challengeId: string): Promise<OtpChallengeInfo> => authApi.resendOtp(challengeId),
+    [],
   );
 
   const logout = useCallback(async (): Promise<void> => {
@@ -57,7 +79,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       : "unauthenticated";
 
   return (
-    <AuthContext.Provider value={{ status, user, login, logout }}>
+    <AuthContext.Provider value={{ status, user, login, verifyOtp, resendOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );
