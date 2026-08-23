@@ -146,6 +146,11 @@ describe("reports workflow", () => {
     expect(mocks.getAttendance).toHaveBeenCalledWith(expectedFilters);
     expect(mocks.getDefaulters).toHaveBeenCalledWith(expectedFilters);
     expect(mocks.getLeaderboard).toHaveBeenCalledWith(expectedFilters);
+    const context = screen.getByRole("region", { name: "Applied report context" });
+    expect(within(context).getByText("Grade 7 (g7)")).toBeVisible();
+    expect(within(context).getByText("Mathematics (math)")).toBeVisible();
+    expect(within(context).getByText("2026-08-01 to 2026-08-31")).toBeVisible();
+    expect(within(context).getByText(/unmarked records are not counted as absent/i)).toBeVisible();
     expect(screen.getAllByText("50.00%")).toHaveLength(3);
     expect(screen.getByText("Late")).toBeVisible();
 

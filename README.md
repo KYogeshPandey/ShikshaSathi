@@ -1,6 +1,6 @@
 # ShikshaSathi
 
-> A full-stack school administration, attendance, reporting, and role-based academic workflow platform built as a college project and evolved into a deployable MVP.
+> A full-stack school operations and analytics platform with role-based academic, attendance, reporting, and decision-support workflows.
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://shikshasathi.vercel.app)
 [![Backend](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=000)](https://shikshasathi-api.onrender.com/health/live)
@@ -90,6 +90,13 @@ The screenshots above show the live application UI. Personal account information
 
 ### Reports & Analytics
 
+- Role-aware admin, teacher, and student analytics dashboards
+- Seven-day and 30-day attendance trends from real marked records
+- Equal-duration previous-period comparisons in percentage points
+- School population KPIs for administrators
+- Assignment-scoped attendance and schedule context for teachers
+- Private personal attendance trends for students
+- Lowest recorded-attendance classroom signals for administrators, clearly separated from policy thresholds
 - Attendance summary reports
 - Attendance detail reports
 - Defaulter identification
@@ -133,6 +140,13 @@ Biometric model files, student biometric data, and real enrollment images are **
 ---
 
 ## Architecture
+
+```mermaid
+flowchart LR
+    B[Browser] -->|React + TypeScript| V[Vercel frontend]
+    V -->|Same-origin /api/v1 proxy| R[Render FastAPI backend]
+    R -->|Async SQLAlchemy| N[(Neon PostgreSQL)]
+```
 
 ### Production
 
@@ -480,7 +494,19 @@ The repository includes GitHub Actions checks covering:
 - Migration validation
 - Docker image validation
 
+Current verified frontend suite: **50 automated tests** across API contracts,
+authentication/routing, administrative workflows, attendance, recognition,
+reports, loading UX, and analytics.
+
+Current verified backend suite: **723 automated tests** across API, database,
+authorization, security, migration, attendance, reporting, biometric, and
+analytics behavior.
+
 See `.github/workflows/ci.yml`.
+
+Analytics coverage includes calculation boundaries, equal-period comparisons, empty windows,
+role-derived authorization, teacher assignment isolation, student self-scope, query shape,
+accessible trend summaries, period controls, and dashboard failure states.
 
 ---
 
@@ -559,6 +585,7 @@ Useful documentation:
 - `backend/` remains as legacy migration reference; `backend_v2/` is authoritative.
 - Real-world biometric calibration and liveness validation are outside the hosted demo scope.
 - This is an academic/portfolio project, not a production service for real student biometric deployment.
+- Attendance analytics describe marked records only; they do not infer absence from missing or unmarked records and do not make predictive or causal claims.
 
 ---
 
@@ -566,15 +593,13 @@ Useful documentation:
 
 Future portfolio-edition work may include:
 
-- UI/UX polish
-- Accessibility improvements
-- Deeper analytics
 - Monitoring and observability
 - Stronger security/property testing
 - Performance optimization
 - Backup/restore workflows
 - Biometric lifecycle improvements
 - Deployment reliability improvements
+- Optional, policy-defined attendance targets if a real institutional requirement is established
 
 ---
 
@@ -596,7 +621,7 @@ Unless a separate `LICENSE` file explicitly grants additional rights, no open-so
 
 ## Project Status
 
-**Deployable MVP — Live**
+**Portfolio-ready full-stack platform — Live**
 
 - GitHub publication complete
 - Frontend deployed
@@ -604,5 +629,6 @@ Unless a separate `LICENSE` file explicitly grants additional rights, no open-so
 - Cloud PostgreSQL connected
 - Authentication verified
 - Core administration pages smoke-tested
+- Role-aware attendance analytics implemented
 
 **Live:** https://shikshasathi.vercel.app

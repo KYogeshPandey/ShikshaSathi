@@ -180,3 +180,15 @@ All report routes require Admin or exact assigned Teacher scope, exact
 Attendance detail is capped at 5,000 rows and roster analytics at 1,000
 students. Report/export responses contain no biometric material. Students have
 no arbitrary report endpoint.
+
+## Dashboard analytics
+
+| Method | Path | Role/scope | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/analytics/overview?days=7&date_to=YYYY-MM-DD` | Authenticated; identity-derived Admin, Teacher, or Student scope | Population/assignment context, marked-record attendance summary, equal-duration comparison, and bounded daily trend. `days` accepts only `7` or `30`; optional `date_to` anchors the current window and defaults to today. |
+
+The endpoint accepts no classroom, teacher, or student scope identifier. Admins
+receive school-wide active-resource context and up to three lowest recorded-
+attendance classrooms; teachers receive only active assignment scope; students
+receive only their own attendance. Attendance is present marked records divided
+by all marked records. Missing or unmarked records are excluded.

@@ -19,6 +19,7 @@ const authApiMocks = vi.hoisted(() => ({
 vi.mock("../api/auth", () => ({ authApi: authApiMocks }));
 
 const dashboardApiMocks = vi.hoisted(() => ({
+  getOverview: vi.fn(),
   getMyTeacherProfile: vi.fn(),
   getMyStudentProfile: vi.fn(),
   getMyStats: vi.fn(),
@@ -27,6 +28,7 @@ const dashboardApiMocks = vi.hoisted(() => ({
   listTimetable: vi.fn(),
 }));
 
+vi.mock("../api/analytics", () => ({ analyticsApi: { getOverview: dashboardApiMocks.getOverview } }));
 vi.mock("../api/profiles", () => ({ profilesApi: {
   getMyTeacherProfile: dashboardApiMocks.getMyTeacherProfile,
   getMyStudentProfile: dashboardApiMocks.getMyStudentProfile,
@@ -51,12 +53,59 @@ function renderApplication(path: string) {
   );
 }
 
+function analyticsOverview(days: 7 | 30 = 7) {
+  const dateTo = new Date(Date.UTC(2026, 7, 20));
+  const dateFrom = new Date(dateTo);
+  dateFrom.setUTCDate(dateFrom.getUTCDate() - days + 1);
+  const previousTo = new Date(dateFrom);
+  previousTo.setUTCDate(previousTo.getUTCDate() - 1);
+  const previousFrom = new Date(previousTo);
+  previousFrom.setUTCDate(previousFrom.getUTCDate() - days + 1);
+  const isoDate = (value: Date) => value.toISOString().slice(0, 10);
+  return {
+    role: "admin" as const,
+    period: { days, date_from: isoDate(dateFrom), date_to: isoDate(dateTo) },
+    attendance: { total_count: 8, present_count: 6, absent_count: 2, attendance_percentage: 75 },
+    comparison: {
+      period: { days, date_from: isoDate(previousFrom), date_to: isoDate(previousTo) },
+      attendance: { total_count: 10, present_count: 7, absent_count: 3, attendance_percentage: 70 },
+      percentage_point_change: 5,
+    },
+    trend: Array.from({ length: days }, (_, index) => {
+      const attendanceDate = new Date(dateFrom);
+      attendanceDate.setUTCDate(attendanceDate.getUTCDate() + index);
+      return {
+        attendance_date: isoDate(attendanceDate),
+        total_count: 1,
+        present_count: index % 4 === 0 ? 0 : 1,
+        absent_count: index % 4 === 0 ? 1 : 0,
+        attendance_percentage: index % 4 === 0 ? 0 : 100,
+      };
+    }),
+    attendance_definition: "present_marked_records_divided_by_all_marked_records" as const,
+    missing_records_policy: "excluded_unmarked" as const,
+    admin_population: { active_students: 120, active_teachers: 12, active_classrooms: 8, active_subjects: 10 },
+    teacher_scope: { assigned_classrooms: 2, assigned_subjects: 3, timetable_slots: 6 },
+    student_context: { roll_number: "7" },
+    attention_classrooms: [{
+      classroom_name: "Grade 8 A",
+      classroom_code: "grade-8-a",
+      total_count: 20,
+      present_count: 14,
+      absent_count: 6,
+      attendance_percentage: 70,
+    }],
+  };
+}
+
 beforeEach(() => {
   authApiMocks.restoreSession.mockReset();
   authApiMocks.login.mockReset();
   authApiMocks.logout.mockReset();
   authApiMocks.restoreSession.mockResolvedValue(null);
   authApiMocks.logout.mockResolvedValue();
+  dashboardApiMocks.getOverview.mockReset();
+  dashboardApiMocks.getOverview.mockImplementation(async (days: 7 | 30) => analyticsOverview(days));
   const resource = { is_active: true, created_at: "2026-08-16T00:00:00Z", updated_at: "2026-08-16T00:00:00Z" };
   dashboardApiMocks.getMyTeacherProfile.mockResolvedValue({ ...resource, id: "teacher-profile", user_id: "teacher-user", employee_code: "T-7", phone_number: null });
   dashboardApiMocks.getMyStudentProfile.mockResolvedValue({ ...resource, id: "student-profile", user_id: "student-user", classroom_id: null, roll_number: "7" });
@@ -163,25 +212,28 @@ describe("application and authentication", () => {
 
     await user.click(await screen.findByRole("button", { name: /sign out/i }));
 
-    expect(await screen.findByRole("heading", { name: /sign in to continue/i })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /sign in to continue/i })).toBeVisible();
+    });
     expect(authApiMocks.logout).toHaveBeenCalledOnce();
   });
 });
 
 describe("role routing", () => {
-  const allowedCases: ReadonlyArray<[UserRole, string, RegExp]> = [
-    ["admin", "/admin", /administration workspace/i],
-    ["teacher", "/teacher", /teacher workspace/i],
-    ["student", "/student", /student portal/i],
+  const allowedCases: ReadonlyArray<[UserRole, string, RegExp, string]> = [
+    ["admin", "/admin", /administration workspace/i, "Active students"],
+    ["teacher", "/teacher", /teacher workspace/i, "Assigned classrooms"],
+    ["student", "/student", /student portal/i, "Roll number"],
   ];
 
   it.each(allowedCases)(
     "allows an authenticated %s to render its role shell",
-    async (role, path, heading) => {
+    async (role, path, heading, roleMetric) => {
       authApiMocks.restoreSession.mockResolvedValue(makeUser(role));
       renderApplication(path);
       expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
       expect(screen.getByText(`${role}@school.test`)).toBeVisible();
+      expect(await screen.findByText(roleMetric, {}, { timeout: 5_000 })).toBeVisible();
     },
   );
 
@@ -233,5 +285,20 @@ describe("role routing", () => {
     renderApplication("/student/reports");
     expect(await screen.findByRole("heading", { name: /page not available/i })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+  });
+
+  it("offers a retry when dashboard analytics cannot be loaded", async () => {
+    authApiMocks.restoreSession.mockResolvedValue(makeUser("student"));
+    dashboardApiMocks.getOverview.mockRejectedValue(
+      new ApiError(503, "SERVICE_UNAVAILABLE", "Unavailable"),
+    );
+    const user = userEvent.setup();
+    renderApplication("/student");
+
+    expect(await screen.findByRole("alert", undefined, { timeout: 5_000 })).toBeVisible();
+    dashboardApiMocks.getOverview.mockResolvedValue(analyticsOverview());
+    await user.click(screen.getByRole("button", { name: /retry analytics/i }));
+
+    expect(await screen.findByText("Recent attendance trend")).toBeVisible();
   });
 });

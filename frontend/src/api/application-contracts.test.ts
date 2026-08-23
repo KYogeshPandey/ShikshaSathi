@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiClient } from "./client";
+import { analyticsApi } from "./analytics";
 import { attendanceApi } from "./attendance";
 import { recognitionApi } from "./recognition";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("Application API contracts", () => {
+  it("requests a bounded identity-derived analytics window without client scope IDs", async () => {
+    const get = vi.spyOn(apiClient, "get").mockResolvedValue({});
+
+    await analyticsApi.getOverview(30);
+
+    expect(get).toHaveBeenCalledWith("/analytics/overview?days=30");
+  });
+
   it("uses the teacher-authorized roster scope and student self-service endpoints", async () => {
     const get = vi.spyOn(apiClient, "get").mockResolvedValue({});
 

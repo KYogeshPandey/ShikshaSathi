@@ -18,6 +18,7 @@ from app.modules.academics.assignments_router import router as assignments_route
 from app.modules.academics.classrooms_router import router as classrooms_router
 from app.modules.academics.subjects_router import router as subjects_router
 from app.modules.academics.timetable_router import router as timetable_router
+from app.modules.analytics.router import router as analytics_router
 from app.modules.announcements.router import router as announcements_router
 from app.modules.attendance.audit_router import router as audit_logs_router
 from app.modules.attendance.router import router as attendance_router
@@ -41,6 +42,7 @@ api_router.include_router(announcements_router)
 api_router.include_router(bulk_imports_router)
 api_router.include_router(attendance_router)
 api_router.include_router(reports_router)
+api_router.include_router(analytics_router)
 api_router.include_router(audit_logs_router)
 api_router.include_router(biometric_enrollment_router)
 api_router.include_router(face_recognition_router)

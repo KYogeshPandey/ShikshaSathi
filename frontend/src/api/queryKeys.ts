@@ -12,6 +12,7 @@ export const queryKeys = {
   attendanceRoster: (classroomId: string, subjectId: string) =>
     ["attendance", "roster", classroomId, subjectId] as const,
   studentAttendance: ["attendance", "me"] as const,
+  analyticsOverview: (days: 7 | 30) => ["analytics", "overview", days] as const,
   reports: ["reports"] as const,
   attendanceReport: (filters: object) => ["reports", "attendance", filters] as const,
   defaultersReport: (filters: object) => ["reports", "defaulters", filters] as const,

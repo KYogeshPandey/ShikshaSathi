@@ -171,6 +171,11 @@ export function ReportsPage() {
   const optionsLoading = classrooms.isPending || subjects.isPending;
   const reportsLoading = filters !== null && (attendance.isPending || defaulters.isPending || leaderboard.isPending);
   const exportLoading = csvExport.isPending || pdfExport.isPending;
+  const appliedClassroom = classrooms.data?.items.find((item) => item.id === filters?.classroomId);
+  const appliedSubject = subjects.data?.items.find((item) => item.id === filters?.subjectId);
+  const appliedStudent = roster.data?.find(
+    (item) => item.student_profile_id === filters?.studentProfileId,
+  );
 
   return (
     <section className="page-stack">
@@ -258,6 +263,13 @@ export function ReportsPage() {
 
       {attendance.data ? (
         <>
+          <section aria-label="Applied report context" className="report-context">
+            <div><span>Classroom</span><strong>{appliedClassroom ? `${appliedClassroom.name} (${appliedClassroom.code})` : "Selected classroom"}</strong></div>
+            <div><span>Subject</span><strong>{appliedSubject ? `${appliedSubject.name} (${appliedSubject.code})` : "Selected subject"}</strong></div>
+            <div><span>Period</span><strong>{attendance.data.period.date_from} to {attendance.data.period.date_to}</strong></div>
+            <div><span>Student</span><strong>{filters?.studentProfileId ? `Roll ${appliedStudent?.roll_number ?? "not assigned"}` : "All active students"}</strong></div>
+            <p>Attendance = present ÷ all marked records. Unmarked records are not counted as absent. CSV and PDF exports use this same applied scope.</p>
+          </section>
           <div className="metric-grid">
             <article className="metric-card"><span>Total records</span><strong>{attendance.data.summary.total_count}</strong></article>
             <article className="metric-card"><span>Present</span><strong>{attendance.data.summary.present_count}</strong></article>

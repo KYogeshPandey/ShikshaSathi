@@ -214,6 +214,59 @@ export interface StudentSelfStats {
   attendance_percentage: number;
 }
 
+export type AnalyticsWindowDays = 7 | 30;
+
+export interface AnalyticsPeriod {
+  days: AnalyticsWindowDays;
+  date_from: string;
+  date_to: string;
+}
+
+export interface AnalyticsAttendanceMetric {
+  total_count: number;
+  present_count: number;
+  absent_count: number;
+  attendance_percentage: number;
+}
+
+export interface AnalyticsTrendPoint extends AnalyticsAttendanceMetric {
+  attendance_date: string;
+}
+
+export interface AnalyticsOverview {
+  role: "admin" | "teacher" | "student";
+  period: AnalyticsPeriod;
+  attendance: AnalyticsAttendanceMetric;
+  comparison: {
+    period: AnalyticsPeriod;
+    attendance: AnalyticsAttendanceMetric;
+    percentage_point_change: number | null;
+  };
+  trend: AnalyticsTrendPoint[];
+  attendance_definition: "present_marked_records_divided_by_all_marked_records";
+  missing_records_policy: "excluded_unmarked";
+  admin_population: {
+    active_students: number;
+    active_teachers: number;
+    active_classrooms: number;
+    active_subjects: number;
+  } | null;
+  teacher_scope: {
+    assigned_classrooms: number;
+    assigned_subjects: number;
+    timetable_slots: number;
+  } | null;
+  student_context: {
+    roll_number: string | null;
+  } | null;
+  attention_classrooms: Array<
+    AnalyticsAttendanceMetric & {
+      classroom_name: string;
+      classroom_code: string;
+    }
+  >;
+}
+
 export interface ReportPeriod {
   month: string | null;
   date_from: string;
