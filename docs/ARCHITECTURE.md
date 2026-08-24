@@ -1,220 +1,300 @@
-# ShikshaSathi v2 — Current Architecture
+# ShikshaSathi Architecture
 
-This document began as the Phase 0 target architecture. Phases 1–9 have now
-implemented the Deployable MVP described here. Historical rationale remains
-preserved, while §12–§14 record the final production and legacy-retirement
-boundaries. Finding references such as `(AUDIT §x.x)` point to the original
-legacy defect that motivated the v2 design.
+ShikshaSathi is a modular monolith: one React single-page application, one
+FastAPI service, and one PostgreSQL database. Feature boundaries are kept in
+code rather than split into separately deployed microservices.
 
-Style: **modular monolith**. One deployable backend service, one deployable frontend, clear internal module boundaries. No microservices, no Kubernetes (explicitly out of scope per the rebuild brief).
+## System overview
 
----
-
-## 1. Stack
-
-**Backend**
-- Python 3.12+
-- FastAPI (replaces Flask)
-- Pydantic v2 (already partially used in the legacy app's `schemas/` — extended to cover every request/response)
-- SQLAlchemy 2 (replaces raw pymongo dict access)
-- Alembic (replaces the ad hoc `debug_db.py`/`fix_db.py` scripts — AUDIT §1.4, §3.2 — with real, versioned migrations)
-- PostgreSQL (replaces MongoDB)
-- pytest (replaces the currently-empty test suite — AUDIT §2.12)
-- Ruff (lint), mypy (type-check)
-
-**Frontend**
-- React + TypeScript (replaces untyped JS)
-- Vite (replaces `react-scripts`/CRA — also brings the frontend in line with what `README.md` already claimed, AUDIT §4.1)
-- Tailwind CSS (reused directly — AUDIT: "Reuse" in migration map)
-- React Router
-- TanStack Query (replaces manual axios calls with no caching/retry/401-handling — AUDIT §3.4)
-- React Hook Form + Zod (form state + schema validation, shared validation shapes with backend Pydantic models where practical)
-- Vitest + React Testing Library (there are currently zero frontend tests)
-- Playwright — later, once there's enough surface area for meaningful e2e coverage
-
-**Infrastructure**
-- Docker + Docker Compose for local/dev (no Dockerfile exists today — AUDIT §4.4)
-- PostgreSQL as a Compose service
-- GitHub Actions CI for migrations, tests, static checks, dependency audits,
-  frontend build, and production image builds (Phase 9 closure of AUDIT §4.5)
-
----
-
-## 2. Repository layout
-
-```
-ShikshaSathi/
-├── backend_v2/
-│   ├── app/
-│   │   ├── main.py                # FastAPI app instantiation
-│   │   ├── core/
-│   │   │   ├── config.py          # Pydantic Settings — single source of env config
-│   │   │   ├── security.py        # JWT issue/verify, password hashing
-│   │   │   └── logging.py         # structured logging setup
-│   │   ├── db/
-│   │   │   ├── session.py         # SQLAlchemy engine/session
-│   │   │   └── base.py
-│   │   ├── modules/
-│   │   │   ├── auth/               # login, tokens, refresh
-│   │   │   ├── users/              # admin/teacher/student accounts
-│   │   │   ├── academics/          # classrooms, subjects, timetable
-│   │   │   ├── attendance/         # attendance core + audit trail
-│   │   │   ├── announcements/
-│   │   │   ├── reports/
-│   │   │   └── face_recognition/   # detector/embedder/matcher boundary (AUDIT §2.13)
-│   │   ├── api/                   # versioned routers, thin — delegate to modules/
-│   │   └── tests/
-│   ├── alembic/
-│   ├── .env.example
-│   └── pyproject.toml
-├── frontend/
-│   ├── src/
-│   │   ├── app/                   # routing, providers
-│   │   ├── features/              # one folder per domain (mirrors backend modules/)
-│   │   ├── api/                   # typed API client, TanStack Query hooks
-│   │   ├── components/            # shared/reusable UI
-│   │   └── test/
-│   ├── vite.config.ts
-│   └── package.json
-├── docker-compose.yml
-├── docs/
-└── shared/                        # (currently empty in legacy repo — reserved for shared types/contracts if adopted later)
+```mermaid
+flowchart LR
+    Browser["Browser"] --> SPA["React + TypeScript SPA"]
+    SPA -->|"typed /api/v1 requests"| API["FastAPI modular monolith"]
+    API --> DB[("PostgreSQL")]
+    API --> Files["Private biometric storage"]
+    API -. "optional local inference" .-> Models["YuNet + dlib models"]
 ```
 
-Each backend `modules/<name>/` follows the same internal shape: `router.py`, `service.py`, `repository.py`, `schemas.py`, `models.py`. This is a direct, deliberate improvement on the legacy layout, where routes/services/models were three separate top-level folders (`api/v1/`, `services/`, `models/`) with no per-feature grouping — which is part of why it was possible for `services/timetable_service.py` and `services/announcement_service.py` to go empty and dead without anyone noticing (AUDIT: Legacy Migration Map, Timetable/Announcements rows). Co-locating a feature's router/service/repository/schema makes dead code far more visible.
+The authoritative application directories are:
 
----
+- `frontend/`: React, TypeScript, Vite, routing, forms, and server-state UI.
+- `backend_v2/`: FastAPI, business services, repositories, migrations, and
+  tests.
+- `backend/`: legacy Flask source retained for provenance; it is not deployed.
 
-## 3. Request lifecycle
+## Frontend architecture
 
+The frontend is a Vite SPA using React Router, TanStack Query, React Hook Form,
+and Zod.
+
+- `src/api/client.ts` is the only HTTP transport. It normalizes the API root,
+  sends cookie credentials, attaches the in-memory access token, parses safe
+  error envelopes, and coordinates refresh/retry.
+- Server state belongs to TanStack Query. Auth context exposes only the narrow
+  current-user/session operations needed by components.
+- The access token is memory-only. It is not stored in `localStorage`,
+  `sessionStorage`, IndexedDB, or a JavaScript-created cookie.
+- The backend-issued refresh token remains in an HttpOnly cookie and is never
+  read or mirrored by JavaScript.
+- Authenticated and role-specific route guards protect `/admin/*`,
+  `/teacher/*`, and `/student/*`. Hidden navigation is not treated as an
+  authorization boundary.
+- Forms and workflows provide loading, empty, validation, error, and success
+  states. Camera/file recognition inputs remain in browser memory only for the
+  submission lifecycle.
+
+On application bootstrap, the frontend attempts a cookie-backed refresh,
+stores the returned access token in memory, then loads `/auth/me`. A protected
+request that receives 401 joins one shared refresh operation and retries once;
+refresh failure clears the local session and returns the user to login.
+
+## Backend architecture
+
+FastAPI routers are thin adapters over feature services and repositories:
+
+```mermaid
+flowchart LR
+    Request --> Middleware --> Router --> Service --> Repository --> PostgreSQL[(PostgreSQL)]
+    Service --> Audit["Audit writer"]
 ```
-Client (React) → TanStack Query → typed API client
-   → FastAPI router (thin: parse path/query, call service)
-   → service (business logic, orchestrates repositories)
-   → repository (SQLAlchemy queries, one repository per aggregate)
-   → PostgreSQL
+
+`backend_v2/app/modules/` contains bounded modules for authentication, users,
+academic resources, profiles, announcements, imports, attendance, reports,
+analytics, biometric enrollment, and face recognition.
+
+- Routers parse HTTP inputs and declare authentication/role dependencies.
+- Services own business rules, authorization-sensitive orchestration, and
+  transaction boundaries.
+- Repositories own SQLAlchemy queries and flush changes without deciding HTTP
+  behavior.
+- Pydantic request/response schemas define the public contracts and generate
+  OpenAPI.
+- Typed application exceptions are converted to stable client-safe error
+  envelopes with request IDs. Unexpected exceptions do not expose tracebacks,
+  database errors, credentials, or filesystem paths.
+- Structured logs exclude request bodies, authorization/cookie headers,
+  passwords, tokens, OTP/reset grants, images, and embeddings.
+
+## Database and transaction boundaries
+
+PostgreSQL is the source of truth. SQLAlchemy uses asynchronous sessions and
+Alembic owns schema history.
+
+- UUID primary keys reduce predictable identifier enumeration.
+- Standalone academic/profile records generally use soft deactivation so
+  historical references remain intact.
+- Genuine many-to-many relationships use association tables rather than
+  comma-separated identifiers.
+- Service-owned transactions make multi-record attendance writes atomic.
+- Repositories translate integrity failures into stable domain errors.
+- Attendance has one row per student/classroom/subject/date, protected by a
+  database unique constraint.
+- Audit logs are append-only through the application: the repository and API
+  expose no update or delete path.
+- Blocked attendance authorization events use an independent transaction so
+  rolling back the rejected request does not erase the security event.
+
+Compose and CI run migrations before application tests/startup. Downgrades are
+manual and are never an automatic deployment action.
+
+## Authentication and session architecture
+
+Passwords use Argon2id. Access and refresh credentials deliberately have
+different lifecycles:
+
+- Access tokens are short-lived signed JWTs kept in frontend memory.
+- JWT claims include identity and token metadata, but the current user and
+  role are reloaded from PostgreSQL for protected requests.
+- Refresh tokens are high-entropy opaque values. Only SHA-256 digests and
+  session/rotation metadata are stored in PostgreSQL.
+- Refresh tokens rotate under a row lock. Reuse of a replaced token revokes all
+  active refresh sessions for the user.
+- Refresh cookies are HttpOnly, path-scoped to authentication routes,
+  SameSite-configured, and Secure in production.
+- Cookie-authenticated refresh/logout requests enforce the explicit allowed
+  origin boundary in addition to cookie protections.
+- Login and other sensitive unauthenticated routes use bounded fixed-window
+  rate limits. The current limiter is process-local, so horizontally scaled
+  deployments require a shared limiter at the trusted ingress.
+
+### Direct and OTP login
+
+```mermaid
+flowchart LR
+    Credentials["Email + password"] --> Valid{Valid active user?}
+    Valid -->|No| Reject["Generic rejection"]
+    Valid -->|Yes, OTP disabled| Session["JWT + refresh session"]
+    Valid -->|Yes, OTP enabled| Challenge["Hashed login OTP challenge"]
+    Challenge --> Verify["Verify six-digit OTP"]
+    Verify --> Session
 ```
 
-Errors bubble up as typed exceptions (see §7) and are translated to a consistent JSON error shape at the router/middleware boundary — never as raw `str(exception)` returned to the client, which was a real issue in the legacy decorators (AUDIT §2.4, Medium finding).
+`LOGIN_OTP_ENABLED=false` preserves direct login. When enabled, valid
+credentials create a purpose-bound, expiring challenge but do not create an
+authenticated session. OTPs are cryptographically generated, stored only as
+keyed digests, one-time use, attempt-limited, resend-replaced, cooldown-bound,
+and rate-limited. SMTP is environment configured; the development log adapter
+is rejected in production.
 
----
+### Password reset
 
-## 4. Authentication boundary
+```mermaid
+flowchart LR
+    Email["Registered email request"] --> ResetOTP["Hashed password-reset OTP"]
+    ResetOTP --> VerifyReset["Verify OTP"]
+    VerifyReset --> Grant["Short-lived opaque reset grant"]
+    Grant --> Password["Validate + hash new password"]
+    Password --> Revoke["Revoke all refresh sessions"]
+    Revoke --> Login["Return to sign in"]
+```
 
-- `core/security.py` owns token issuance/verification exclusively. No route or service calls a JWT library directly — this consolidates what used to be split across `utils/auth.py`'s two overlapping decorators (AUDIT §2.4).
-- Access + refresh token pair (legacy had access-token-only, no revocation path — AUDIT §2.3).
-- `JWT_SECRET` (renamed/kept as-is, TBD in Phase 2) has **no fallback default** — startup fails loudly if unset. This directly closes Critical finding C2.
-- Rate limiting on `/auth/login` and other write-heavy endpoints from day one (legacy declared `flask-limiter` as a dependency but never used it — AUDIT §2.6, High H1).
+Login and reset OTPs have separate database purposes and purpose-separated
+HMAC inputs. Neither can authorize the other flow. Public request/resend
+responses are identical for active, inactive, and nonexistent accounts.
 
-## 5. Authorization and ownership checks
+Successful OTP verification replaces the stored OTP digest with a digest of a
+high-entropy reset grant. The raw grant is returned once, is bound to the
+challenge/user, expires quickly, is accepted only by reset confirmation, and
+never authenticates an API request. Confirmation row-locks and consumes the
+grant, applies the existing password policy and Argon2id hashing, and revokes
+all refresh sessions. Existing stateless access tokens cannot be recalled and
+remain valid only until normal expiry.
 
-- Role check (`admin`/`teacher`/`student`) stays as a first gate, same concept as legacy `requires_roles`.
-- **New:** an explicit ownership-check layer in the service tier for every teacher-scoped resource (classroom, subject, student roster, attendance record) — verifying the authenticated user is actually assigned to the resource before allowing read or write. This is the direct fix for Critical finding C4 (any teacher could read/write any classroom's attendance in the legacy app). Ownership checks are implemented once, as a reusable dependency, not copy-pasted per route.
-- Student-role access remains identity-derived (`current_user.id`), matching the one place the legacy app got this right (`/attendance/mystats` — AUDIT §2.4 positive note).
+## Authorization model
 
-## 6. Database access pattern & transaction handling
+Roles are `admin`, `teacher`, and `student`.
 
-- Repository-per-aggregate over raw SQLAlchemy sessions; no direct ORM queries inside routers.
-- Explicit transaction boundaries at the service layer (`async with session.begin():` style), replacing MongoDB's implicit single-document-write semantics — attendance bulk-save in particular (legacy `save_bulk_attendance`) needs a real transaction so a partial failure can't leave a batch half-written.
-- Startup fails fast if the database is unreachable — no silent `_db = None` fallback (AUDIT §2.2).
+| Role | Scope |
+|---|---|
+| Admin | Academic/profile management, imports, reports, audit reads, and biometric enrollment |
+| Teacher | Reads and attendance operations only for exact active classroom/subject assignments |
+| Student | Identity-derived own profile and attendance plus visible announcements |
 
-## 7. Validation & error format
+Role denial is normally 403. A caller with an otherwise permitted role who
+requests another user's private or unrelated object generally receives the
+same 404 as a missing object, reducing existence disclosure. Teacher/student
+scope is derived from the authenticated database user, profiles, assignments,
+and classroom membership; client-supplied ownership identifiers are never
+authoritative.
 
-- Every request/response has a Pydantic v2 model; FastAPI generates OpenAPI from them automatically (also solves AUDIT §4.2 — API docs going stale, since they'd be generated rather than hand-maintained).
-- Standard error envelope, e.g. `{"success": false, "error": {"code": "...", "message": "..."}}`, produced by a single exception-handling middleware — not ad hoc `try/except` blocks per route (legacy pattern, AUDIT §2.7).
+## Academic and attendance flow
 
-## 8. Logging & audit trail
+Academic entities—classrooms, subjects, profiles, assignments, timetable, and
+announcements—provide the relationship graph used for authorization.
+Timetable writes require an active matching teacher/classroom/subject
+assignment. Announcement visibility is global, role-based, or classroom-based.
 
-- Structured logging (`core/logging.py`) replaces every `print()` call in the legacy backend (AUDIT §2.7). No secret values are ever logged — a direct, permanent fix for how the MongoDB URI leak happened in the first place (AUDIT §1.4/C1).
-- The existing audit-log feature concept (legacy `audit_log_service.py`/`AuditLogPage.jsx`) is kept and extended to also record authorization failures (blocked attempts), not just successful admin actions — see Phase 4.
+Manual attendance follows this path:
 
-## 9. Face-recognition boundary
+```mermaid
+flowchart LR
+    Teacher --> Scope["Authorize classroom + subject"]
+    Scope --> Roster["Server-derived active roster"]
+    Roster --> Review["Teacher selects statuses"]
+    Review --> Transaction["Transactional AttendanceService write"]
+    Transaction --> Records[("Attendance records")]
+    Transaction --> Audit[("Audit event")]
+    Records --> Reports["Reports + analytics"]
+```
 
-- Kept as an isolated module (`modules/face_recognition/`) behind a narrow interface: `detect(image) -> [face]`, `embed(face) -> vector`, `match(vector, candidates) -> student_id | None` — the same three-stage shape the legacy `ml/` folder already implied by its file names, just actually implemented this time (AUDIT §2.13/H3).
-- **Provider decided (Rebuild Phase 5 Stage 1):** server-side local Python inference, per `docs/adr/0005-face-recognition-provider-pending.md` (now `Accepted`) — no browser-side or hosted-API inference for the MVP. The module boundary above is still what makes the provider swappable later; Stage 1 gave that boundary concrete typed `Protocol` interfaces (`app/modules/face_recognition/protocols.py`) and value objects (`domain.py`), with no provider-specific type (OpenCV, dlib, or otherwise) crossing it.
-- **Detector/embedder/matcher implemented (Rebuild Phase 5 Stage 3):** real face detection (YuNet via OpenCV's `cv2.FaceDetectorYN`), a standalone landmark-driven alignment/normalization stage, real embedding (dlib's `dlib_face_recognition_resnet_model_v1`, 128-D, L2-normalized), and a candidate-scoped cosine-similarity matcher — see `docs/adr/0011-phase5-stage3-embedding-model-and-matching.md` and `docs/HANDOVER_PHASE_5_STAGE_3.md` for the full design. `FaceMatcher.match` takes an explicit, caller-supplied candidate list (never queries a repository itself) — the concrete mechanism behind "matching is always scoped, never institution-wide."
-- Biometric images/embeddings are treated as sensitive data: stored outside the web root (`Settings.BIOMETRIC_STORAGE_ROOT`), referenced by ID, never returned in bulk API responses, and covered by their own retention/deletion policy — defined in `docs/BIOMETRIC_DATA_POLICY.md` (Rebuild Phase 5 Stage 1; undefined before this, since the legacy app had no working implementation to have a policy about). Stage 3 extends this: the computed embedding (a new `biometric_embeddings` table, migration `d22bce264ecd`, parent `ca8e748dc8f2`) is itself never returned by any API response and never appears in audit-log metadata.
-- **Enrollment/ingestion implemented (Rebuild Phase 5 Stage 2):** `modules/biometric_enrollment/` — a separate module from `modules/face_recognition/`, deliberately. It owns everything up to and including "a validated image is safely stored for a student"; it never detects, aligns, embeds, or matches a face, and adds no inference dependency (only Pillow, for decode/format/dimension validation). Two ORM tables (`BiometricEnrollment`, `BiometricSample`; migration `ca8e748dc8f2`, parent `e1208296dad5`) give clear separation between a student's enrollment *identity/lifecycle* and the individual stored *sample* files, each tracked through an explicit state machine (`pending` → `active` → `replacement_pending`/`deletion_pending` → `quarantined` → `deleted`) — see that module's `models.py` for the full rationale, and `docs/HANDOVER_PHASE_5_STAGE_2.md` for the design in detail. A `RecognitionProcessingState` column exists on every sample specifically so no Stage 2 code path could ever claim a sample is recognition-ready — Stage 3 is the first code to write anything other than `pending_processing` there (via `app/modules/face_recognition/processing_service.py`, which also added three nullable processing-bookkeeping columns to `biometric_samples` in the Stage 3 migration, without touching Stage 2's own migration file).
-- Private storage (`modules/biometric_enrollment/storage.py`) is a filesystem abstraction with three zones under `BIOMETRIC_STORAGE_ROOT` — `staging/`, `active/`, `quarantine/` (plus `bulk_staging/` for whole-ZIP uploads) — addressed only by server-generated opaque keys; no client-supplied filename or path ever reaches a filesystem call. Promotion/quarantine are atomic same-filesystem renames (`os.replace`); every code path that pairs a database write with a filesystem rename documents and implements compensating cleanup for the case where the rename fails after the database write already committed (a SQL transaction cannot roll back a filesystem operation — see `docs/BIOMETRIC_DATA_POLICY.md`).
-- Bulk enrollment accepts a ZIP archive with a root `manifest.csv` (`student_profile_id,filename` columns) and validates the entire archive — path traversal, absolute/drive/UNC paths, symlinks, encrypted/nested members, excessive count/size, suspicious compression ratios, and manifest consistency — before extracting a single byte (`modules/biometric_enrollment/zip_security.py`, never `ZipFile.extractall()`/`extract()`). The batch is atomic with respect to validation: any row failing pre-execution validation aborts the whole batch with zero writes.
-- A narrowly-scoped, read-only reconciliation report (`modules/biometric_enrollment/reconciliation.py`) detects database/filesystem drift (an active-status row with no file, an orphaned file with no row, a sample stuck mid-transition) without ever repairing it automatically — consistent with this application having no background-worker architecture to run an automated repair job on.
-- **No model weight of any kind (detector `.onnx` or embedder `.dat`) is downloaded, vendored, or committed anywhere in this repository or any ZIP built from it.** `Settings.FACE_DETECTOR_MODEL_PATH`/`FACE_EMBEDDER_MODEL_PATH` are deployer-supplied filesystem paths to files obtained independently, with optional SHA-256 integrity verification (`app/modules/face_recognition/model_artifacts.py`).
+The active roster provides minimal student identifiers for authorized manual
+and recognition workflows. Attendance statuses are `present` or `absent`;
+missing records are not silently interpreted as absence in analytics.
 
-### Milestone 4 proposal and OTP boundaries
+## Reports and analytics
 
-- Image attendance is proposal-first: one bounded upload may yield multiple
-  face proposals inside a persisted non-biometric review envelope. No
-  decision, including `FOUND`, writes attendance. Only the authorized
-  teacher's explicit confirmation crosses into the existing
-  `AttendanceService`; unmarked, missed, unknown, ambiguous, and duplicate
-  faces remain non-writing. Uploaded classroom images and per-request
-  embeddings stay in memory.
-- `LOGIN_OTP_ENABLED=false` leaves the Phase 2 login contract unchanged. When
-  enabled, credentials create a challenge containing only an HMAC-SHA256
-  digest and lifecycle metadata. The existing access-token/refresh-session
-  issuer is called only after the challenge is consumed successfully.
-- OTP expiry, one-time use, attempts, resend replacement/cooldown, and endpoint
-  limits are server-side. SMTP is environment configured; the explicit
-  development-log adapter is rejected in production, and OTPs are never
-  returned in API responses.
-- Password reset reuses the same challenge table under a separate enum purpose.
-  Verification replaces the OTP digest with a short-lived opaque reset-grant
-  digest in the same row. The grant is accepted only by reset confirmation,
-  never by access-token authentication, and is invalidated after one password
-  update. Confirmation revokes all refresh sessions; existing stateless access
-  tokens retain only their normal short remaining lifetime.
+Report requests require an exact authorized classroom/subject and a bounded
+month or date range. Attendance detail is bounded, roster aggregations are
+set-based, and deterministic ordering is used for leaderboards and exports.
+Students do not receive arbitrary cross-student report endpoints.
 
-## 10. Frontend state & API flow
+- Attendance percentage is `present / marked records * 100`, rounded to two
+  decimals; zero marked records returns `0.0`.
+- Defaulters use the active roster, include zero-record students, and compare
+  strictly below the selected threshold.
+- CSV cells beginning with spreadsheet formula triggers are escaped.
+- PDFs and CSVs are produced in memory without temporary report files.
+- The analytics overview accepts 7- or 30-day windows, compares with the
+  equal-duration preceding period, and derives scope from the current role.
+- Missing or unmarked attendance is excluded; analytics do not make causal,
+  predictive, or policy-compliance claims.
 
-- Server state (anything from the API) lives in TanStack Query, not component state or Context — replaces the legacy pattern of manual `useState`/`useEffect` + direct axios calls with no caching, retry, or 401-handling (AUDIT §3.4).
-- Auth state (current user, token) stays in a small React Context, but token storage strategy is revisited (legacy: `localStorage`, read independently from two places — `api.js` and `AuthContext.jsx` — AUDIT §3.4) in favor of a single source of truth, with httpOnly-cookie storage evaluated as an option during Phase 2.
-- Every route the legacy app has gets rebuilt — including `/student/*`, which in the legacy app is wired to empty files and crashes at runtime (Critical C3). The rebuild's Student feature module is scoped explicitly in Phase 7 so this doesn't silently happen again.
+## Image-assisted attendance architecture
 
-## 11. Testing layers
+Biometric enrollment and recognition are separate modules. Enrollment owns
+validated private samples and lifecycle state. Recognition owns detection,
+alignment, embeddings, candidate-scoped matching, and review proposals.
 
-- Backend: unit tests per module (`service`/`repository` logic), integration tests per API router, using a real (containerized) Postgres for integration tests rather than mocks where practical.
-- Frontend: component tests (Vitest + RTL) per feature, Playwright e2e later for the critical paths (login → mark attendance → view report).
-- This entire layer is new — the legacy app has the folder structure for it (`tests/unit/`, `tests/integration/`) but zero actual test code (AUDIT §2.12).
+```mermaid
+flowchart LR
+    Image["Bounded classroom image"] --> Authorize["Authorize teacher scope"]
+    Authorize --> Candidates["Derive active roster candidates"]
+    Candidates --> Detect["Detect + align faces"]
+    Detect --> Embed["Create transient embeddings"]
+    Embed --> Match["Roster-scoped matching"]
+    Match --> Proposals["Persist non-biometric review proposals"]
+    Proposals --> TeacherReview["Explicit teacher review"]
+    TeacherReview --> Confirm["Confirm selected statuses"]
+    Confirm --> AttendanceService["AttendanceService"]
+```
 
-## 12. Deployment shape
+Authorization and roster derivation happen before provider work. One bounded
+image may produce multiple proposals. Every outcome—including `FOUND`—is only
+a suggestion; no proposal writes attendance automatically. Unknown,
+ambiguous, duplicate, missed, or unmarked faces never imply absence. Only
+teacher-selected statuses reach `AttendanceService`.
 
-- Root `docker-compose.yml` starts PostgreSQL 16, a one-shot Alembic migration
-  gate, the non-root `backend_v2` runtime, and the non-root Nginx frontend.
-- Only the frontend publishes a host port. It serves the SPA and proxies
-  `/api/*` and `/health/*`; PostgreSQL and FastAPI remain private to Compose.
-- PostgreSQL and private biometric storage use separate persistent named
-  volumes. Source/release archives exclude biometric data and model weights.
-- Environment config is centralized in Pydantic `Settings`. Production rejects
-  placeholder/missing secrets, debug mode, wildcard/empty CORS or trusted-host
-  lists, and insecure refresh cookies.
-- GitHub Actions runs PostgreSQL migrations, the complete backend suite,
-  production-source Ruff/mypy/compile checks, all frontend gates and dependency
-  audits, Compose validation, and both production image builds.
+The classroom image, decoded pixels, aligned crops, and per-request embeddings
+remain in memory. Persisted reviews contain bounded scope, candidate,
+decision, confirmation, and attendance identifiers—not image data or
+embeddings. Matching has no institution-wide fallback.
 
-## 13. Legacy → v2 migration strategy
+The optional local provider uses OpenCV YuNet detection, landmark alignment,
+dlib 128-dimensional L2-normalized embeddings, and cosine similarity. Model
+paths and optional SHA-256 hashes are deployment configuration. The default
+threshold is provisional rather than classroom-calibrated, and no liveness or
+real-world accuracy claim is made. See the
+[biometric data policy](BIOMETRIC_DATA_POLICY.md).
 
-See `docs/LEGACY_MIGRATION_MAP.md` for the full per-module breakdown. In summary:
-- **Data:** a one-time export/transform/load from MongoDB collections into the new PostgreSQL schema, written as a real Alembic-adjacent script (not an ad hoc debug script) once Phase 1's schema is finalized. Legacy password hashes (Werkzeug scrypt) can be verified against the same algorithm during login without forcing a mass password reset, if desired — a decision to make explicitly at Phase 2, not assumed here.
-- **Production retirement:** the Phase 9 Compose topology contains no Flask,
-  MongoDB, or legacy CRA process. Historical source remains for traceability,
-  but `backend_v2` + PostgreSQL + the Vite frontend are the only production
-  application stack.
-- **No functionality is silently dropped** — every legacy feature has an explicit Reuse/Refactor/Rewrite/Remove/Defer decision in the migration map, including the two features that turned out to be entirely unimplemented already (face recognition, student frontend) — those simply become greenfield work in Phases 5–7 rather than "migrations."
+## Deployment architecture
 
-## 14. Phase 9 canonical and retirement boundary
+### Hosted portfolio deployment
 
-- **`backend_v2/` is canonical.** It contains the complete FastAPI application:
-  authentication/RBAC, academic management, attendance/audit, biometric
-  enrollment and recognition attendance, and reports/exports.
-- **PostgreSQL is the production source of truth.** No v2 process imports a
-  Mongo client or performs a dual write.
-- **`frontend/` is canonical.** It is the strict TypeScript/Vite application for
-  all three roles and the only frontend built into the production image.
-- **Legacy source is retained, not deployed.** `backend/` and historical legacy
-  files remain available for audit/migration reference, but no Dockerfile,
-  Compose service, Nginx route, startup command, or CI application job executes
-  them.
-- **Historical data conversion remains deployment-specific.** A school moving
-  real legacy MongoDB records must run a separately reviewed export/transform/
-  validate/import procedure. The release never connects both databases or
-  silently imports production data.
+```mermaid
+flowchart LR
+    Browser --> Vercel["Vercel frontend"]
+    Vercel -->|"/api/* rewrite"| Render["Render FastAPI backend"]
+    Render --> Neon[("Neon PostgreSQL")]
+```
+
+The browser uses same-origin `/api/v1` paths. Vercel serves the SPA and proxies
+API requests to Render. Render runs the backend Docker image; Neon provides
+PostgreSQL. CORS, trusted hosts, secrets, SMTP, cookie security, and optional
+recognition-provider/model configuration remain explicit environment values.
+
+The hosted deployment does not imply that face recognition is enabled. With
+`FACE_RECOGNITION_PROVIDER=none`, recognition endpoints report the configured
+unavailable state and no hosted inference occurs. Production OTP email also
+does not work until SMTP is deliberately configured.
+
+### Docker Compose
+
+The default Compose topology contains PostgreSQL 16, a one-shot Alembic
+migration service, the non-root FastAPI runtime, and an Nginx frontend. Only
+Nginx publishes a host port; backend and database services stay on the private
+network. PostgreSQL data and biometric storage use separate named volumes.
+
+Production images use multi-stage builds, non-root users, read-only
+filesystems where practical, dropped capabilities, health checks, and no
+source bind mounts or reload servers. GitHub Actions runs migrations, backend
+tests/static checks, frontend tests/typecheck/lint/build, dependency audits,
+Compose validation, and production image builds.
+
+## Operational boundaries
+
+- No real `.env`, model weight, biometric sample, embedding export, database
+  dump, or private key belongs in Git or a release archive.
+- OpenAPI generated by FastAPI is authoritative for field-level API schemas.
+- Biometric retention, consent, legal review, threshold calibration,
+  anti-spoofing, backups, and monitoring remain deployment responsibilities.
+- The legacy Flask/MongoDB code is not imported or deployed by the v2 stack.

@@ -1,673 +1,371 @@
 # ShikshaSathi
 
-> A full-stack school operations and analytics platform with role-based academic, attendance, reporting, and decision-support workflows.
+> A full-stack school operations, attendance, reporting, and analytics platform
+> for administrators, teachers, and students.
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://shikshasathi.vercel.app)
-[![Backend](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=000)](https://shikshasathi-api.onrender.com/health/live)
+[![API Health](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=000)](https://shikshasathi-api.onrender.com/health/live)
 [![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=000)](frontend/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi&logoColor=fff)](backend_v2/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=fff)](docker-compose.yml)
 [![CI](https://github.com/KYogeshPandey/ShikshaSathi/actions/workflows/ci.yml/badge.svg)](https://github.com/KYogeshPandey/ShikshaSathi/actions)
 
-## Live Demo
+## Overview
 
-**Application:** https://shikshasathi.vercel.app
-**Backend health:** https://shikshasathi-api.onrender.com/health/live
-**Repository:** https://github.com/KYogeshPandey/ShikshaSathi
+ShikshaSathi is a portfolio-ready school management application built around
+role-scoped academic and attendance workflows. The current application is the
+React/TypeScript frontend in `frontend/`, the FastAPI backend in `backend_v2/`,
+and PostgreSQL. The older Flask code in `backend/` is retained only as legacy
+source and is not part of the production runtime.
 
-The hosted demo uses a free Render backend, so the first request after inactivity can take longer while the backend wakes up.
+- **Live frontend:** <https://shikshasathi.vercel.app>
+- **Backend health:** <https://shikshasathi-api.onrender.com/health/live>
+- **API prefix:** `/api/v1`
 
-Authentication is required. Public administrator credentials are intentionally **not** stored in this repository. There is no public self-registration endpoint.
+The hosted backend may have a cold-start delay after inactivity. Authentication
+is required, public administrator credentials are not committed, and there is
+no public self-registration endpoint.
 
----
+## Features
 
-## What is ShikshaSathi?
+### Administration and academics
 
-ShikshaSathi is a role-based school management platform focused on academic administration and attendance workflows.
+- Classrooms, subjects, teacher profiles, student profiles, and assignments
+- Timetable management and role/classroom-targeted announcements
+- CSV/XLSX imports with file, row, schema, and error-reporting bounds
+- Soft-deactivation workflows and database-backed authorization
 
-It provides separate experiences for:
+### Attendance, reports, and analytics
 
-- **Administrators** — manage classrooms, subjects, teachers, students, assignments, timetable, announcements, bulk imports, and reports.
-- **Teachers** — view schedules, work within assigned academic scopes, and record attendance.
-- **Students** — view their dashboard, attendance information, and school announcements.
+- Exact teacher/classroom/subject authorization for attendance operations
+- Transactional manual attendance with immutable success/blocked audit events
+- Student self-service attendance details and statistics
+- Attendance summaries, defaulters, leaderboards, formula-safe CSV, and PDF
+- Role-aware 7-day and 30-day dashboards backed by marked attendance records
+- Deterministic demo dataset for portfolio evaluation
 
-The project also contains an optional biometric enrollment and face-recognition workflow. The live free-hosting deployment keeps face recognition disabled because the native `dlib` dependency and model runtime are resource intensive.
+### Authentication and security
 
----
+- Argon2id passwords and short-lived JWT access tokens
+- Rotating opaque refresh sessions in path-scoped HttpOnly cookies
+- Database-reloaded roles, role guards, and object-level authorization
+- Login, OTP, password-reset, and other sensitive-route rate limits
+- Optional six-digit email OTP before login session issuance
+- Secure OTP-based password reset with a short-lived single-use reset grant
+- Refresh-session revocation after password changes or rotated-token reuse
+- Explicit production CORS/trusted-host validation and sanitized error responses
+
+### Reviewed image-assisted attendance
+
+- Private biometric enrollment with bounded image and ZIP validation
+- Server-side YuNet detection and dlib embedding adapters when configured
+- Matching limited to the authorized active classroom roster
+- Multi-face proposals that require teacher review and explicit confirmation
+- No automatic attendance write for `FOUND`, unknown, ambiguous, duplicate,
+  missed, or unmarked faces
+- No classroom-image or per-request embedding retention
+
+Face recognition is implemented but optional. A deployment may keep
+`FACE_RECOGNITION_PROVIDER=none`; the hosted free-tier backend may therefore
+have recognition disabled. Model files are not bundled, real classroom
+accuracy is not claimed, and operational use requires the safeguards in the
+[biometric data policy](docs/BIOMETRIC_DATA_POLICY.md).
 
 ## Screenshots
 
 <table>
   <tr>
-    <td width="50%" align="center">
-      <img src="docs/screenshots/login-page.png" alt="ShikshaSathi secure login page">
-      <br><b>Secure Login</b>
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/screenshots/admin-dashboard.png" alt="ShikshaSathi administration dashboard">
-      <br><b>Administration Dashboard</b>
-    </td>
+    <td width="50%" align="center"><img src="docs/screenshots/login-page.png" alt="ShikshaSathi login page"><br><b>Secure login</b></td>
+    <td width="50%" align="center"><img src="docs/screenshots/admin-dashboard.png" alt="ShikshaSathi administration dashboard"><br><b>Administration dashboard</b></td>
   </tr>
   <tr>
-    <td width="50%" align="center">
-      <img src="docs/screenshots/timetable-management.png" alt="ShikshaSathi timetable management page">
-      <br><b>Timetable Management</b>
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/screenshots/bulk-import.png" alt="ShikshaSathi bulk import workflow">
-      <br><b>Bulk Import Workflow</b>
-    </td>
+    <td width="50%" align="center"><img src="docs/screenshots/timetable-management.png" alt="ShikshaSathi timetable management"><br><b>Timetable management</b></td>
+    <td width="50%" align="center"><img src="docs/screenshots/bulk-import.png" alt="ShikshaSathi bulk import workflow"><br><b>Bulk import</b></td>
   </tr>
 </table>
 
-The screenshots above show the live application UI. Personal account information has been redacted before publication.
+## Tech stack
 
----
-
-## Key Features
-
-### Administration
-
-- Classroom management
-- Subject management
-- Teacher profiles
-- Student profiles
-- Teacher/classroom/subject assignments
-- Timetable management
-- School announcements
-- CSV/XLSX bulk-import workflows
-- Role-aware administration dashboard
-
-### Attendance
-
-- Manual attendance workflows
-- Multi-face image-assisted proposals with teacher review before every write
-- Teacher authorization and scope validation
-- Attendance audit trail
-- Student attendance views
-- Attendance statistics
-- Roster-based workflows
-- Recognition-attendance workflow support
-
-### Reports & Analytics
-
-- Role-aware admin, teacher, and student analytics dashboards
-- Seven-day and 30-day attendance trends from real marked records
-- Equal-duration previous-period comparisons in percentage points
-- School population KPIs for administrators
-- Assignment-scoped attendance and schedule context for teachers
-- Private personal attendance trends for students
-- Lowest recorded-attendance classroom signals for administrators, clearly separated from policy thresholds
-- Attendance summary reports
-- Attendance detail reports
-- Defaulter identification
-- Attendance leaderboard
-- CSV exports
-- PDF exports
-- Deterministic report ordering
-- Spreadsheet formula-injection protection for CSV exports
-
-### Authentication & Security
-
-- JWT access-token authentication
-- HttpOnly refresh-token flow
-- Role-Based Access Control (RBAC)
-- Login rate limiting
-- Trusted-host validation
-- Production CORS validation
-- Request IDs
-- Secure production-cookie configuration
-- No public self-registration
-- Environment-based secret management
-- Optional email OTP verification before JWT/refresh-session issuance
-- Secure OTP-based forgot-password flow with refresh-session revocation
-- No real `.env` or private-key files committed to Git
-
-### Optional Face Recognition
-
-The codebase includes:
-
-- Biometric enrollment workflows
-- Secure ZIP validation for bulk enrollment
-- Image validation and bounded processing
-- YuNet-based face detection integration
-- `dlib` ResNet embedding integration
-- Similarity matching and ambiguity handling
-- Recognition attendance attempts
-- Multi-face review proposals and explicit confirmation
-- Model artifact integrity checks
-
-`dlib` is an **optional dependency** for the free deployment profile and is not installed in the default hosted backend image.
-
-Biometric model files, student biometric data, and real enrollment images are **not included** in the repository.
-
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-    B[Browser] -->|React + TypeScript| V[Vercel frontend]
-    V -->|Same-origin /api/v1 proxy| R[Render FastAPI backend]
-    R -->|Async SQLAlchemy| N[(Neon PostgreSQL)]
-```
-
-### Production
-
-```text
-Browser
-  │
-  ▼
-Vercel Frontend
-React + TypeScript + Vite
-  │
-  │ /api/v1 same-origin proxy
-  ▼
-Render Backend
-FastAPI + Uvicorn
-  │
-  ▼
-Neon PostgreSQL
-```
-
-The frontend uses a same-origin `/api` rewrite, so the browser communicates with the Vercel domain while Vercel proxies API traffic to the Render backend.
-
-### Local Docker Development
-
-```text
-Browser
-  │
-  ▼
-Frontend / Nginx :8080
-  │
-  ▼
-FastAPI backend
-  │
-  ▼
-PostgreSQL
-```
-
-Database migrations run through the Compose migration service before the backend becomes available.
-
----
-
-## Tech Stack
-
-| Area | Technology |
+| Layer | Technology |
 |---|---|
-| Frontend | React, TypeScript, Vite |
-| Client data layer | TanStack Query |
-| Backend | FastAPI, Python 3.12 |
-| Validation | Pydantic / Pydantic Settings |
-| ORM | SQLAlchemy 2.x Async |
-| PostgreSQL driver | asyncpg |
-| Database migrations | Alembic |
-| Database | PostgreSQL 16 |
-| Production database | Neon PostgreSQL |
-| Authentication | JWT access tokens + refresh-token cookies |
-| Reports | CSV + ReportLab PDF |
-| Face detection | OpenCV YuNet |
-| Face embeddings | dlib ResNet — optional |
-| Local infrastructure | Docker + Docker Compose |
-| Frontend runtime | Nginx |
-| Backend runtime | Uvicorn |
-| Frontend hosting | Vercel |
-| Backend hosting | Render |
-| CI | GitHub Actions |
+| Frontend | React 19, TypeScript, Vite, React Router |
+| Client data and forms | TanStack Query, React Hook Form, Zod |
+| Backend | Python 3.12, FastAPI, Pydantic |
+| Persistence | PostgreSQL 16, async SQLAlchemy 2, asyncpg |
+| Migrations | Alembic |
+| Authentication | Argon2id, JWT access tokens, opaque refresh sessions |
+| Reports | CSV, ReportLab PDF |
+| Optional recognition | OpenCV YuNet, dlib ResNet embeddings |
+| Testing | pytest, Vitest, React Testing Library |
+| Delivery | Docker Compose, Nginx, GitHub Actions, Vercel, Render, Neon |
 
----
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component boundaries and
+security/data flows.
 
-## Repository Structure
+## Local setup
 
-```text
-ShikshaSathi/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── backend/                 # Legacy Flask backend retained as migration reference
-├── backend_v2/              # Current / authoritative FastAPI backend
-│   ├── alembic/
-│   ├── app/
-│   ├── scripts/
-│   ├── Dockerfile
-│   ├── alembic.ini
-│   └── pyproject.toml
-├── frontend/                # Current React + TypeScript + Vite frontend
-│   ├── src/
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── package.json
-│   └── vercel.json
-├── docs/
-├── .env.example
-├── docker-compose.yml
-├── API_DOCS.md
-└── README.md
-```
-
-> **Important:** `backend_v2/` is the current application backend.
-> `backend/` is legacy code preserved for migration/history reference and is not used by the production deployment.
-
----
-
-# Run Locally
-
-The recommended local setup uses Docker Compose.
-
-## Prerequisites
-
-Install:
+### Prerequisites
 
 - Git
-- Docker Desktop
-- Docker Compose
+- Docker Desktop with Docker Compose
 
-Verify:
-
-```bash
-git --version
-docker --version
-docker compose version
-```
-
-## 1. Clone the Repository
-
-```bash
-git clone https://github.com/KYogeshPandey/ShikshaSathi.git
-cd ShikshaSathi
-```
-
-## 2. Create the Local Environment File
-
-### Windows PowerShell
+Clone the repository and create a private environment file:
 
 ```powershell
+git clone https://github.com/KYogeshPandey/ShikshaSathi.git
+Set-Location ShikshaSathi
 Copy-Item .env.example .env
-code .env
 ```
 
-### Linux / macOS
-
-```bash
-cp .env.example .env
-```
-
-For local development, update at least:
+Replace every `CHANGE_ME`/`replace-me` value in `.env`. For a local Compose
+run, use an explicit browser origin and host list such as:
 
 ```env
-APP_ENV=development
-DEBUG=false
-
-SECRET_KEY=replace-with-a-unique-random-secret-at-least-32-characters
-
-CORS_ALLOWED_ORIGINS=["http://localhost:8080","http://127.0.0.1:8080"]
+CORS_ALLOWED_ORIGINS=["http://localhost:8080"]
 TRUSTED_HOSTS=["localhost","127.0.0.1"]
+```
 
-REFRESH_TOKEN_COOKIE_SECURE=false
+Generate a unique `SECRET_KEY` of at least 32 characters and a separate local
+PostgreSQL password. Keep the default safe provider settings until optional
+services are deliberately configured:
 
-POSTGRES_DB=shikshasathi
-POSTGRES_USER=shikshasathi
-POSTGRES_PASSWORD=replace-with-a-unique-local-database-password
-
+```env
+LOGIN_OTP_ENABLED=false
+OTP_EMAIL_PROVIDER=none
 FACE_RECOGNITION_PROVIDER=none
 ```
 
-Do **not** commit `.env`.
+Validate and start the production-shaped local stack:
 
-## 3. Validate Docker Compose
-
-```bash
-docker compose config
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps -a
 ```
 
-## 4. Build and Start
-
-```bash
-docker compose up -d --build
-```
-
-Check status:
-
-```bash
-docker compose ps
-```
-
-## 5. Verify Health
-
-### PowerShell
+The one-shot `migrate` service must exit successfully before `backend_v2`
+starts. Open <http://localhost:8080> and verify:
 
 ```powershell
 Invoke-WebRequest http://localhost:8080/health/live -UseBasicParsing
 Invoke-WebRequest http://localhost:8080/health/ready -UseBasicParsing
 ```
 
-### curl
+Create the first administrator after migrations:
 
-```bash
-curl http://localhost:8080/health/live
-curl http://localhost:8080/health/ready
-```
-
-Both should return HTTP `200`.
-
-## 6. Create the First Administrator
-
-```bash
+```powershell
 docker compose exec backend_v2 python -m scripts.bootstrap_admin
 ```
 
-The command prompts for an admin email and password. The password is not echoed.
+The password prompt does not echo. Stop the stack with `docker compose down`.
+Adding `-v` also deletes the local PostgreSQL and biometric named volumes.
 
-There is no public registration route.
+### Native frontend/backend development
 
-## 7. Optional Demo Dataset
+For hot-reload development, provide a PostgreSQL 16 database and use
+`backend_v2/.env.example` as the backend template:
 
-The deterministic demo seed is operator-invoked and never runs at startup:
+```powershell
+Set-Location backend_v2
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+```
 
-```bash
+In another terminal, point the Vite client at the local API without changing
+committed configuration:
+
+```powershell
+Set-Location frontend
+npm ci
+Set-Content -Path .env.local -Value 'VITE_API_URL=http://localhost:8000/api/v1'
+npm run dev
+```
+
+The backend template already permits the exact development origins
+`http://localhost:3000` and `http://127.0.0.1:3000`. `.env.local` and real
+`.env` files must remain uncommitted.
+
+## Environment configuration
+
+Runtime settings are validated by `backend_v2/app/core/config.py`. The
+committed templates contain placeholders only.
+
+| Area | Important settings |
+|---|---|
+| Application | `APP_ENV`, `DEBUG`, `API_V1_PREFIX`, `LOG_LEVEL` |
+| Database | `DATABASE_URL` or Compose `POSTGRES_*` values |
+| Security | `SECRET_KEY`, `CORS_ALLOWED_ORIGINS`, `TRUSTED_HOSTS` |
+| Sessions | access/refresh expiry and `REFRESH_TOKEN_COOKIE_*` |
+| OTP/email | `LOGIN_OTP_ENABLED`, `OTP_EMAIL_PROVIDER`, `SMTP_*` |
+| Demo data | `DEMO_SEED_*`, selected `DEMO_*_EMAIL` overrides |
+| Recognition | `FACE_RECOGNITION_PROVIDER`, model paths/hashes and bounds |
+
+Production startup rejects placeholder/missing secrets, debug mode, wildcard
+or empty CORS/trusted-host lists, insecure refresh cookies, and the development
+OTP logger.
+
+## Database migrations
+
+Alembic is authoritative for schema changes:
+
+```powershell
+Set-Location backend_v2
+alembic heads
+alembic upgrade head
+alembic current
+```
+
+Compose runs `alembic upgrade head` automatically through its migration gate.
+Downgrades are manual operations and should only follow a reviewed backup and
+rollback decision. Never edit an already-applied migration to change history.
+
+## Demo dataset
+
+The deterministic seed is operator-invoked and never runs at application
+startup:
+
+```powershell
 docker compose exec backend_v2 python -m scripts.seed_demo_data --dry-run
 docker compose exec backend_v2 python -m scripts.seed_demo_data
+docker compose exec backend_v2 python -m scripts.seed_demo_data --reset-demo
 ```
 
-It creates 1 synthetic administrator, 2 teachers, 12 students, 2 classrooms,
-3 subjects, assignments, timetable entries, announcements, and varied prior
-attendance that existing reports/analytics consume. Running it again is
-idempotent. `--reset-demo` restores only the known deterministic demo scope.
-Default emails use `.example`; selected login inboxes can be overridden with
-the documented `DEMO_*_EMAIL` environment settings. Passwords are prompted
-without echo unless supplied through the uncommitted environment.
+It creates 1 administrator, 2 teachers, 12 students, 2 classrooms, 3 subjects,
+assignments, timetable entries, announcements, and varied prior attendance.
+Stable identifiers make reruns idempotent; reset affects only the known demo
+scope. Passwords come from a non-echoing prompt or an uncommitted environment
+value. Default `.example` addresses are non-deliverable.
 
-Production seeding is rejected unless an operator deliberately enables
-`DEMO_SEED_ALLOW_PRODUCTION=true` for a dedicated demo environment. Do not set
-that flag against a real school database.
+Production seeding is refused unless `DEMO_SEED_ALLOW_PRODUCTION=true` is
+explicitly set for a dedicated demo environment. Never enable that flag
+against a real school database.
 
-## 8. Open the Application
+## OTP and email configuration
 
-Visit:
+OTP login is optional. With `LOGIN_OTP_ENABLED=false`, valid email/password
+credentials use the normal JWT/refresh-session flow. When enabled, credentials
+create a hashed, expiring challenge; tokens and refresh sessions are issued
+only after successful OTP verification.
 
-```text
-http://localhost:8080
-```
+Password reset uses the same email provider but a separate OTP purpose. It can
+operate while login OTP is disabled. Request/resend responses are deliberately
+generic, and reset completion revokes all active refresh sessions.
 
-Sign in with the administrator account created above.
-
-Email OTP is optional and disabled by default. For explicit local-only testing,
-set `LOGIN_OTP_ENABLED=true` and `OTP_EMAIL_PROVIDER=development_log`; the code
-will appear only in controlled backend logs, and that adapter is forbidden in
-production. Production OTP requires deliberately configured SMTP environment
-values; no provider account or credential is created by this project.
-
-## Stop the Local Stack
-
-```bash
-docker compose down
-```
-
-To also delete the local PostgreSQL volume:
-
-```bash
-docker compose down -v
-```
-
-> `docker compose down -v` is destructive and deletes local database data.
-
----
-
-# Production Deployment
-
-## Frontend — Vercel
-
-**https://shikshasathi.vercel.app**
-
-Configuration:
-
-```text
-Root Directory: frontend
-Framework: Vite
-VITE_API_URL=/api/v1
-```
-
-`frontend/vercel.json` handles SPA fallback and `/api/*` proxying to Render.
-
-## Backend — Render
-
-**https://shikshasathi-api.onrender.com**
-
-Health:
-
-```text
-https://shikshasathi-api.onrender.com/health/live
-https://shikshasathi-api.onrender.com/health/ready
-```
-
-Configuration:
-
-```text
-Root Directory: backend_v2
-Runtime: Docker
-Health Check Path: /health/ready
-```
-
-Important environment variables:
-
-```text
-APP_ENV
-DEBUG
-DATABASE_URL
-DATABASE_ECHO
-LOG_LEVEL
-SECRET_KEY
-CORS_ALLOWED_ORIGINS
-TRUSTED_HOSTS
-REFRESH_TOKEN_COOKIE_SECURE
-REFRESH_TOKEN_COOKIE_SAMESITE
-POSTGRES_DB
-POSTGRES_USER
-POSTGRES_PASSWORD
-FACE_RECOGNITION_PROVIDER
-```
-
-Real values must remain in the hosting platform and never be committed.
-
-## Database — Neon PostgreSQL
-
-The application uses an async SQLAlchemy connection URL:
-
-```text
-postgresql+asyncpg://...
-```
-
-Migrations are managed with Alembic.
-
-Current release migration head:
-
-```text
-d63e8b51f9a2
-```
-
----
-
-# API
-
-The application exposes versioned APIs under:
-
-```text
-/api/v1
-```
-
-See:
-
-- [`API_DOCS.md`](API_DOCS.md)
-- [`backend_v2/README.md`](backend_v2/README.md)
-
-Example protected endpoint:
-
-```bash
-curl -i https://shikshasathi.vercel.app/api/v1/auth/me
-```
-
-Without authentication, `401 Unauthorized` is expected.
-
----
-
-# CI & Quality
-
-The repository includes GitHub Actions checks covering:
-
-- Backend tests
-- Frontend tests
-- Python formatting/linting
-- Type checking
-- Frontend linting
-- Frontend type checking
-- Production builds
-- Dependency auditing
-- Migration validation
-- Docker image validation
-
-Current verified frontend suite: **59 automated tests** across API contracts,
-authentication/routing, administrative workflows, attendance, recognition,
-reports, loading UX, and analytics.
-
-Current verified backend suite: **751 automated tests** across API, database,
-authorization, security, migration, attendance, reporting, biometric, and
-analytics behavior.
-
-See `.github/workflows/ci.yml`.
-
-Analytics coverage includes calculation boundaries, equal-period comparisons, empty windows,
-role-derived authorization, teacher assignment isolation, student self-scope, query shape,
-accessible trend summaries, period controls, and dashboard failure states.
-
----
-
-# Security Notes
-
-- Never commit `.env`.
-- Never commit production DB passwords.
-- Never commit JWT/secret keys.
-- Never commit private keys or certificates.
-- Production secrets belong in hosting environment variables.
-- Public self-registration is intentionally disabled.
-- Biometric images and embeddings must not be committed.
-- Model artifacts should be independently obtained and integrity checked.
-
-If a secret is accidentally published, removing it from Git is not enough — rotate/revoke it.
-
----
-
-# Face Recognition Notes
-
-The live free demo uses:
+For controlled native development only:
 
 ```env
-FACE_RECOGNITION_PROVIDER=none
+APP_ENV=development
+LOGIN_OTP_ENABLED=true
+OTP_EMAIL_PROVIDER=development_log
 ```
 
-The optional dependency group is:
+`development_log` is forbidden in production. Production email requires:
 
-```bash
-pip install -e ".[face-recognition]"
+```env
+OTP_EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_STARTTLS=true
+SMTP_USE_SSL=false
 ```
 
-Depending on the platform, installing `dlib` may require native C++ build tools.
+Set `SMTP_USERNAME` and `SMTP_PASSWORD` together when the provider requires
+authentication. Real SMTP credentials belong only in the hosting environment.
+The project does not create or configure an email-provider account.
 
-Before enabling biometric workflows in a real environment, review consent/privacy requirements, model integrity, threshold calibration, FAR/FRR, and liveness requirements.
+## API summary
 
-Image-assisted attendance processes the uploaded classroom image in memory,
-creates bounded proposals, and waits for an authorized teacher to explicitly
-confirm selected present/absent statuses. A recognized, unknown,
-low-confidence, duplicate, missed, or unmarked face never writes attendance by
-itself and never implies absence. The free hosted profile remains disabled;
-local use reuses the existing enrollment UI/API and keeps real/consented demo
-images and model artifacts outside Git.
+FastAPI's generated OpenAPI document (`/openapi.json`) and Swagger UI (`/docs`)
+are authoritative for field-level contracts when accessing the backend
+directly.
 
-See:
+| Area | Representative routes |
+|---|---|
+| Health | `GET /health/live`, `GET /health/ready` |
+| Authentication | `/api/v1/auth/login`, `/refresh`, `/logout`, `/me` |
+| OTP and reset | `/api/v1/auth/otp/*`, `/api/v1/auth/password-reset/*` |
+| Academics | `/api/v1/classrooms`, `/subjects`, `/teacher-assignments`, `/timetable-entries` |
+| Profiles and communication | `/api/v1/teacher-profiles`, `/student-profiles`, `/announcements` |
+| Imports | `POST /api/v1/imports/{entity}` |
+| Attendance and audit | `/api/v1/attendance/*`, `/api/v1/audit-logs` |
+| Reports and analytics | `/api/v1/reports/*`, `/api/v1/analytics/overview` |
+| Biometrics and recognition | `/api/v1/biometric-enrollments/*`, `/api/v1/face-recognition/*` |
 
-- [`docs/BIOMETRIC_DATA_POLICY.md`](docs/BIOMETRIC_DATA_POLICY.md)
-- Phase 5 handover documents in `docs/`
+Protected resources are scoped by the authenticated database user. Student
+self-service routes derive identity from the session; teachers cannot broaden
+their classroom/subject scope with client-supplied identifiers.
 
----
+## Testing
 
-# Documentation
+Current verified baseline:
 
-Useful documentation:
+- **Backend:** 763 tests passing
+- **Frontend:** 64 tests passing across 11 files
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/AUDIT.md`](docs/AUDIT.md)
-- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-- [`docs/PROGRESS.md`](docs/PROGRESS.md)
-- [`docs/LEGACY_MIGRATION_MAP.md`](docs/LEGACY_MIGRATION_MAP.md)
-- [`docs/BIOMETRIC_DATA_POLICY.md`](docs/BIOMETRIC_DATA_POLICY.md)
-- [`docs/adr/`](docs/adr/)
+From the repository root:
 
----
+```powershell
+docker compose --profile test run --build --rm backend_v2_test
+docker compose --profile test run --rm backend_v2_test ruff check app alembic scripts
+docker compose --profile test run --rm backend_v2_test ruff format --check app alembic scripts
+docker compose --profile test run --rm backend_v2_test mypy app --exclude app/tests
+docker compose --profile test run --rm backend_v2_test alembic heads
+```
 
-# Current Deployment Profile
+From `frontend/`:
 
-| Component | Service | Status |
-|---|---|---|
-| Frontend | Vercel | Live |
-| Backend | Render | Live |
-| Database | Neon PostgreSQL | Live |
-| Source | GitHub | Public |
-| CI | GitHub Actions | Configured |
-| Face recognition | Optional | Disabled on free hosted demo |
+```powershell
+npm.cmd run typecheck
+npm.cmd run lint
+npx.cmd vitest run
+npm.cmd run build
+```
 
----
+## Deployment overview
 
-# Known Limitations
+```mermaid
+flowchart LR
+    Browser --> Vercel["Vercel: React/Vite SPA"]
+    Vercel -->|"same-origin /api rewrite"| Render["Render: FastAPI"]
+    Render --> Neon[("Neon PostgreSQL")]
+```
 
-- Free backend hosting can introduce a cold-start delay after inactivity.
-- Face recognition is disabled in the hosted free-tier deployment.
-- Biometric model files are intentionally not bundled.
-- `backend/` remains as legacy migration reference; `backend_v2/` is authoritative.
-- Real-world biometric calibration and liveness validation are outside the hosted demo scope.
-- This is an academic/portfolio project, not a production service for real student biometric deployment.
-- Attendance analytics describe marked records only; they do not infer absence from missing or unmarked records and do not make predictive or causal claims.
+- Vercel builds `frontend/`, provides SPA fallback, and rewrites `/api/*` to
+  Render while browser requests remain same-origin.
+- Render builds `backend_v2/` as a Docker service and uses `/health/ready` for
+  readiness.
+- Neon PostgreSQL is the production database; migrations must be applied as a
+  deliberate release step.
+- Secrets, SMTP credentials, origin/host allow-lists, database URLs, and
+  optional model paths remain hosting-environment configuration.
+- Enabling recognition requires independently obtained, integrity-checked
+  YuNet and dlib model files plus privacy review and representative-data
+  calibration. A deployment with provider `none` does not offer hosted
+  recognition.
 
----
+## Documentation
 
-# Roadmap
+- [Architecture](docs/ARCHITECTURE.md)
+- [Biometric data policy](docs/BIOMETRIC_DATA_POLICY.md)
 
-Future portfolio-edition work may include:
+## Known limitations
 
-- Monitoring and observability
-- Stronger security/property testing
-- Performance optimization
-- Backup/restore workflows
-- Biometric lifecycle improvements
-- Deployment reliability improvements
-- Optional, policy-defined attendance targets if a real institutional requirement is established
+- Face recognition may be disabled in hosted deployments.
+- No model weights or real biometric samples are included in the repository.
+- The default recognition threshold is provisional; no classroom accuracy,
+  fairness, or liveness/anti-spoofing claim is made.
+- A successful password reset revokes refresh sessions, but already-issued
+  stateless access tokens remain valid until their short configured expiry.
+- The application is a portfolio/academic project, not a substitute for legal,
+  privacy, consent, operational-security, or production-readiness review.
 
----
+## Author and license
 
-# Author
+**Yogesh Pandey** - [@KYogeshPandey](https://github.com/KYogeshPandey)
 
-**Yogesh Pandey**
-
-GitHub: [@KYogeshPandey](https://github.com/KYogeshPandey)
-
----
-
-# License
-
-This repository is intended for academic and portfolio use.
-
-Unless a separate `LICENSE` file explicitly grants additional rights, no open-source license should be assumed.
-
----
-
-## Project Status
-
-**Portfolio-ready full-stack platform — Live**
-
-- GitHub publication complete
-- Frontend deployed
-- Backend deployed
-- Cloud PostgreSQL connected
-- Authentication verified
-- Core administration pages smoke-tested
-- Role-aware attendance analytics implemented
-
-**Live:** https://shikshasathi.vercel.app
+Unless a separate `LICENSE` file grants additional rights, no open-source
+license should be assumed.
