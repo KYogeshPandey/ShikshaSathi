@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "shikshasathi-backend-v2"
 version = "0.1.0"
 description = "ShikshaSathi v2 backend — FastAPI, PostgreSQL, auth, and academic APIs."
-readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 

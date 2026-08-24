@@ -11,7 +11,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
 COPY app ./app
 
 RUN python -m pip install --upgrade pip \
@@ -32,7 +32,7 @@ WORKDIR /workspace
 # not compile dlib a second time. Only development tooling is added here.
 COPY --from=builder /install /usr/local
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
