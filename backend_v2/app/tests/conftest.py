@@ -72,6 +72,8 @@ os.environ.setdefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 os.environ.setdefault("LOGIN_RATE_LIMIT_ATTEMPTS", "1000")
 os.environ.setdefault("OTP_VERIFY_RATE_LIMIT_ATTEMPTS", "100")
 os.environ.setdefault("OTP_RESEND_RATE_LIMIT_ATTEMPTS", "50")
+os.environ.setdefault("PASSWORD_RESET_REQUEST_RATE_LIMIT_ATTEMPTS", "50")
+os.environ.setdefault("PASSWORD_RESET_CONFIRM_RATE_LIMIT_ATTEMPTS", "50")
 # Secure cookies require HTTPS; TestClient / httpx talk plain HTTP.
 os.environ.setdefault("REFRESH_TOKEN_COOKIE_SECURE", "false")
 # Phase 5 Stage 2: isolate biometric file storage to a throwaway temp

@@ -86,3 +86,8 @@ class UserRepository:
                 raise EmailAlreadyExistsError() from exc
             raise
         return user
+
+    async def update_password(self, user: User, *, password_hash: str) -> None:
+        """Replace a user's password digest inside the caller-owned transaction."""
+        user.password_hash = password_hash
+        await self._session.flush()

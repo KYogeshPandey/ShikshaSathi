@@ -7,6 +7,9 @@ import {
   type LoginCredentials,
   type LoginResult,
   type OtpChallengeInfo,
+  type PasswordResetConfirmResult,
+  type PasswordResetGrant,
+  type PasswordResetRequestInfo,
 } from "../types/auth";
 import { AuthContext, authQueryKey, type AuthStatus } from "./authContext";
 import { authSession } from "./session";
@@ -60,6 +63,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [],
   );
 
+  const requestPasswordReset = useCallback(
+    (email: string): Promise<PasswordResetRequestInfo> => authApi.requestPasswordReset(email),
+    [],
+  );
+
+  const verifyPasswordResetOtp = useCallback(
+    (email: string, otp: string): Promise<PasswordResetGrant> =>
+      authApi.verifyPasswordResetOtp(email, otp),
+    [],
+  );
+
+  const resendPasswordResetOtp = useCallback(
+    (email: string): Promise<PasswordResetRequestInfo> =>
+      authApi.resendPasswordResetOtp(email),
+    [],
+  );
+
+  const confirmPasswordReset = useCallback(
+    (
+      resetId: string,
+      resetToken: string,
+      newPassword: string,
+      confirmPassword: string,
+    ): Promise<PasswordResetConfirmResult> =>
+      authApi.confirmPasswordReset(resetId, resetToken, newPassword, confirmPassword),
+    [],
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     try {
       await authApi.logout();
@@ -79,7 +110,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
       : "unauthenticated";
 
   return (
-    <AuthContext.Provider value={{ status, user, login, verifyOtp, resendOtp, logout }}>
+    <AuthContext.Provider
+      value={{
+        status,
+        user,
+        login,
+        verifyOtp,
+        resendOtp,
+        requestPasswordReset,
+        verifyPasswordResetOtp,
+        resendPasswordResetOtp,
+        confirmPasswordReset,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

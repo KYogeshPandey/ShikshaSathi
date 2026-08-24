@@ -43,3 +43,19 @@ export function isOtpChallenge(result: LoginResult): result is OtpChallengeInfo 
 export interface RefreshResponse {
   token: AccessTokenInfo;
 }
+
+export interface PasswordResetRequestInfo {
+  detail: string;
+  expires_in: number;
+  resend_available_in: number;
+}
+
+export interface PasswordResetGrant {
+  reset_id: string;
+  reset_token: string;
+  expires_in: number;
+}
+
+export interface PasswordResetConfirmResult {
+  detail: string;
+}

@@ -89,6 +89,22 @@ def create_app() -> FastAPI:
                 settings.OTP_RESEND_RATE_LIMIT_ATTEMPTS,
                 settings.OTP_RESEND_RATE_LIMIT_WINDOW_SECONDS,
             ),
+            f"{auth_prefix}/password-reset/request": (
+                settings.PASSWORD_RESET_REQUEST_RATE_LIMIT_ATTEMPTS,
+                settings.PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+            f"{auth_prefix}/password-reset/verify": (
+                settings.OTP_VERIFY_RATE_LIMIT_ATTEMPTS,
+                settings.OTP_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+            f"{auth_prefix}/password-reset/resend": (
+                settings.OTP_RESEND_RATE_LIMIT_ATTEMPTS,
+                settings.OTP_RESEND_RATE_LIMIT_WINDOW_SECONDS,
+            ),
+            f"{auth_prefix}/password-reset/confirm": (
+                settings.PASSWORD_RESET_CONFIRM_RATE_LIMIT_ATTEMPTS,
+                settings.PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_SECONDS,
+            ),
         },
     )
     app.add_middleware(

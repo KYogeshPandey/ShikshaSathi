@@ -47,12 +47,16 @@ The production frontend proxies `/health/*` to the internal backend.
 | POST | `/api/v1/auth/login` | None | Email/password login. With OTP disabled, returns the existing user/token response and refresh cookie; with OTP enabled, returns only a challenge. |
 | POST | `/api/v1/auth/otp/verify` | None | Consumes a valid six-digit login challenge, then issues the existing access token + refresh session. |
 | POST | `/api/v1/auth/otp/resend` | None | Replaces an eligible challenge after the server-enforced cooldown. |
+| POST | `/api/v1/auth/password-reset/request` | None | Returns a generic response and emails a reset OTP only when an active registered account exists. |
+| POST | `/api/v1/auth/password-reset/resend` | None | Generically resends/replaces an eligible reset OTP after the server-enforced cooldown. |
+| POST | `/api/v1/auth/password-reset/verify` | None | Consumes a reset-purpose OTP and returns only a short-lived, single-purpose reset grant. |
+| POST | `/api/v1/auth/password-reset/confirm` | Reset grant | Applies password policy, updates the password once, and revokes every active refresh session for the user. |
 | POST | `/api/v1/auth/refresh` | Refresh cookie + same-origin check | Rotates refresh session and returns a new access token. |
 | POST | `/api/v1/auth/logout` | Optional refresh cookie + same-origin check | Idempotently revokes/clears the current refresh session. |
 | GET | `/api/v1/auth/me` | Access token | Safe current-user representation. |
 
-Login, OTP verification, and OTP resend use independent fixed-window limits by
-client address. A blocked request returns 429,
+Login, OTP verification/resend, and every password-reset step use independent
+fixed-window limits by client address. A blocked request returns 429,
 `RATE_LIMIT_EXCEEDED`, and `Retry-After` without recording credentials or the
 request body.
 
@@ -70,6 +74,18 @@ have bounded attempts, and store only a keyed digest. No access token or
 refresh session exists before verification succeeds. Invalid credentials keep
 the same generic failure response. Any syntactically valid registered email
 domain is accepted; there is no school-domain rule.
+
+Password-reset request and resend responses are identical for active,
+inactive, and nonexistent accounts. Reset OTPs and login OTPs have distinct
+database purposes and purpose-separated HMAC inputs, so neither can authorize
+the other flow. Successful reset verification replaces the stored OTP digest
+with the digest of a high-entropy opaque reset grant and shortens the row to
+the grant lifetime. The raw grant is returned once, is accepted only by the
+reset-confirm endpoint, and never creates an access token, refresh cookie, or
+authenticated session. Confirmation is row-locked and single-use. Existing
+refresh sessions are revoked after the password changes. Existing stateless
+access tokens remain valid only until their normal short expiry; they cannot
+be recalled by the current JWT architecture.
 
 ## Academic resources
 

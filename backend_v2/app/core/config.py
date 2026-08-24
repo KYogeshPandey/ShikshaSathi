@@ -174,6 +174,11 @@ class Settings(BaseSettings):
     OTP_VERIFY_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
     OTP_RESEND_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=50)
     OTP_RESEND_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
+    PASSWORD_RESET_GRANT_TTL_SECONDS: int = Field(default=300, ge=60, le=900)
+    PASSWORD_RESET_REQUEST_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=50)
+    PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
+    PASSWORD_RESET_CONFIRM_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=50)
+    PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
     OTP_EMAIL_PROVIDER: Literal["none", "smtp", "development_log"] = "none"
     SMTP_HOST: str | None = None
     SMTP_PORT: int = Field(default=587, ge=1, le=65535)
@@ -665,27 +670,25 @@ class Settings(BaseSettings):
             if self.OTP_EMAIL_PROVIDER == "development_log":
                 raise ValueError("OTP_EMAIL_PROVIDER=development_log is forbidden in production.")
 
-        if self.LOGIN_OTP_ENABLED:
-            if self.OTP_EMAIL_PROVIDER == "none":
+        if self.LOGIN_OTP_ENABLED and self.OTP_EMAIL_PROVIDER == "none":
+            raise ValueError(
+                "LOGIN_OTP_ENABLED=true requires an explicitly configured email provider."
+            )
+        if self.OTP_EMAIL_PROVIDER == "smtp":
+            if not self.SMTP_HOST or self.SMTP_FROM_EMAIL is None:
                 raise ValueError(
-                    "LOGIN_OTP_ENABLED=true requires an explicitly configured email provider."
+                    "SMTP_HOST and SMTP_FROM_EMAIL are required when OTP SMTP delivery is enabled."
                 )
-            if self.OTP_EMAIL_PROVIDER == "smtp":
-                if not self.SMTP_HOST or self.SMTP_FROM_EMAIL is None:
-                    raise ValueError(
-                        "SMTP_HOST and SMTP_FROM_EMAIL are required when OTP SMTP "
-                        "delivery is enabled."
-                    )
-                if bool(self.SMTP_USERNAME) != bool(self.SMTP_PASSWORD):
-                    raise ValueError(
-                        "SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be unset."
-                    )
-                if self.SMTP_STARTTLS and self.SMTP_USE_SSL:
-                    raise ValueError("SMTP_STARTTLS and SMTP_USE_SSL cannot both be enabled.")
-                if self.APP_ENV is Environment.PRODUCTION and not (
-                    self.SMTP_STARTTLS or self.SMTP_USE_SSL
-                ):
-                    raise ValueError("Production OTP SMTP delivery requires TLS.")
+            if bool(self.SMTP_USERNAME) != bool(self.SMTP_PASSWORD):
+                raise ValueError(
+                    "SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be unset."
+                )
+            if self.SMTP_STARTTLS and self.SMTP_USE_SSL:
+                raise ValueError("SMTP_STARTTLS and SMTP_USE_SSL cannot both be enabled.")
+            if self.APP_ENV is Environment.PRODUCTION and not (
+                self.SMTP_STARTTLS or self.SMTP_USE_SSL
+            ):
+                raise ValueError("Production OTP SMTP delivery requires TLS.")
         return self
 
 

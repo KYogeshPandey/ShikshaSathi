@@ -27,9 +27,21 @@ from app.modules.auth.schemas import (
     OtpChallengeResponse,
     OtpResendRequest,
     OtpVerifyRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetConfirmResponse,
+    PasswordResetEmailRequest,
+    PasswordResetGrantResponse,
+    PasswordResetRequestResponse,
+    PasswordResetVerifyRequest,
     RefreshResponse,
 )
-from app.modules.auth.service import AuthResult, AuthService, OtpChallengeResult
+from app.modules.auth.service import (
+    AuthResult,
+    AuthService,
+    OtpChallengeResult,
+    PasswordResetGrantResult,
+    PasswordResetRequestResult,
+)
 from app.modules.users.models import User
 from app.modules.users.schemas import UserRead
 
@@ -73,6 +85,25 @@ def _otp_challenge_response(result: OtpChallengeResult) -> OtpChallengeResponse:
         challenge_id=result.challenge_id,
         expires_in=result.expires_in_seconds,
         resend_available_in=result.resend_available_in_seconds,
+    )
+
+
+def _password_reset_request_response(
+    result: PasswordResetRequestResult,
+) -> PasswordResetRequestResponse:
+    return PasswordResetRequestResponse(
+        expires_in=result.expires_in_seconds,
+        resend_available_in=result.resend_available_in_seconds,
+    )
+
+
+def _password_reset_grant_response(
+    result: PasswordResetGrantResult,
+) -> PasswordResetGrantResponse:
+    return PasswordResetGrantResponse(
+        reset_id=result.reset_id,
+        reset_token=result.reset_token,
+        expires_in=result.expires_in_seconds,
     )
 
 
@@ -139,6 +170,79 @@ async def resend_login_otp(
         email_sender=email_sender,
     )
     return _otp_challenge_response(result)
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=PasswordResetRequestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password-reset verification code",
+)
+async def request_password_reset(
+    payload: PasswordResetEmailRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    email_sender: OtpEmailSenderDependency,
+) -> PasswordResetRequestResponse:
+    result = await AuthService(session=session, settings=settings).request_password_reset(
+        email=payload.email,
+        email_sender=email_sender,
+    )
+    return _password_reset_request_response(result)
+
+
+@router.post(
+    "/password-reset/resend",
+    response_model=PasswordResetRequestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Resend a password-reset verification code",
+)
+async def resend_password_reset(
+    payload: PasswordResetEmailRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    email_sender: OtpEmailSenderDependency,
+) -> PasswordResetRequestResponse:
+    result = await AuthService(session=session, settings=settings).resend_password_reset_otp(
+        email=payload.email,
+        email_sender=email_sender,
+    )
+    return _password_reset_request_response(result)
+
+
+@router.post(
+    "/password-reset/verify",
+    response_model=PasswordResetGrantResponse,
+    summary="Verify a password-reset code",
+)
+async def verify_password_reset(
+    payload: PasswordResetVerifyRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PasswordResetGrantResponse:
+    result = await AuthService(session=session, settings=settings).verify_password_reset_otp(
+        email=payload.email,
+        otp=payload.otp,
+    )
+    return _password_reset_grant_response(result)
+
+
+@router.post(
+    "/password-reset/confirm",
+    response_model=PasswordResetConfirmResponse,
+    summary="Set a new password using a verified reset grant",
+)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PasswordResetConfirmResponse:
+    await AuthService(session=session, settings=settings).confirm_password_reset(
+        reset_id=payload.reset_id,
+        reset_token=payload.reset_token,
+        new_password=payload.new_password,
+    )
+    return PasswordResetConfirmResponse()
 
 
 @router.post(

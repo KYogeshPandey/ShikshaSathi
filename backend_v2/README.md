@@ -172,6 +172,28 @@ only in the deployment environment, apply the migration, and then set
 `LOGIN_OTP_ENABLED=true`. Any syntactically valid email domain is accepted,
 but credentials must belong to an existing active registered user.
 
+## Secure password reset
+
+The login page uses the same OTP delivery, expiry, attempt limit, resend
+cooldown, and rate-limit infrastructure for password reset. The public request
+and resend responses are deliberately generic for active, inactive, and
+unknown emails. Password-reset OTPs use a distinct database purpose and cannot
+complete login; login OTPs cannot authorize reset.
+
+After OTP verification, the stored OTP digest is atomically replaced by a
+digest of a high-entropy, short-lived reset grant. The raw grant is returned
+once and is valid only at `POST /api/v1/auth/password-reset/confirm`. A valid
+confirmation applies the existing password policy and Argon2id hashing,
+consumes the grant, and revokes all active refresh sessions. No reset endpoint
+issues a JWT, refresh cookie, or authenticated session. Existing stateless
+access tokens cannot be recalled and remain valid only until their configured
+short expiry.
+
+Password reset requires the same `OTP_EMAIL_PROVIDER` configuration as login
+OTP but does not require `LOGIN_OTP_ENABLED=true`. With provider `none`, public
+request responses remain generic but no email can be delivered. Apply Alembic
+head `d63e8b51f9a2` before using the flow.
+
 ## Quality gates
 
 With a migrated isolated PostgreSQL test database configured:

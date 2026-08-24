@@ -93,3 +93,19 @@ class OtpDeliveryUnavailableError(AppError):
 
     def __init__(self) -> None:
         super().__init__("The verification email could not be sent. Please try again shortly.")
+
+
+class InvalidPasswordResetGrantError(AppError):
+    code = "INVALID_PASSWORD_RESET_GRANT"
+    status_code = status.HTTP_401_UNAUTHORIZED
+
+    def __init__(self) -> None:
+        super().__init__("The password reset authorization is invalid or has expired.")
+
+
+class InvalidNewPasswordError(AppError):
+    code = "INVALID_NEW_PASSWORD"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

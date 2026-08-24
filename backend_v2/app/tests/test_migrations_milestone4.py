@@ -1,4 +1,4 @@
-"""Round-trip the additive Milestone 4 review and OTP migrations."""
+"""Round-trip the additive Milestone 4 review, OTP, and reset-purpose migrations."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ATTEMPT_REVISION = "4f8c1a6e92b7"
 _REVIEW_REVISION = "b41f6d91a2c3"
 _OTP_REVISION = "c52d7a40e8f1"
+_PASSWORD_RESET_REVISION = "d63e8b51f9a2"
 
 
 def _config() -> Config:
@@ -72,6 +73,19 @@ def _enum_exists(name: str) -> bool:
     )
 
 
+def _enum_values(name: str) -> list[str]:
+    return list(
+        _scalar(
+            "SELECT array_agg(value ORDER BY sort_order) FROM ("
+            "SELECT enumlabel AS value, enumsortorder AS sort_order "
+            "FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+            "WHERE pg_type.typname = :name) enum_values",
+            {"name": name},
+        )
+        or []
+    )
+
+
 def test_milestone4_migrations_upgrade_downgrade_and_restore_head() -> None:
     config = _config()
     try:
@@ -81,11 +95,17 @@ def test_milestone4_migrations_upgrade_downgrade_and_restore_head() -> None:
         return
 
     try:
-        assert _revision() == _OTP_REVISION
+        assert _revision() == _PASSWORD_RESET_REVISION
         assert _table_exists("recognition_attendance_reviews")
         assert _column_exists("recognition_attendance_attempts", "review_id")
         assert _table_exists("otp_challenges")
         assert _enum_exists("otp_purpose")
+        assert _enum_values("otp_purpose") == ["login", "password_reset"]
+
+        command.downgrade(config, _OTP_REVISION)
+        assert _revision() == _OTP_REVISION
+        assert _table_exists("otp_challenges")
+        assert _enum_values("otp_purpose") == ["login"]
 
         command.downgrade(config, _REVIEW_REVISION)
         assert _revision() == _REVIEW_REVISION
@@ -100,8 +120,9 @@ def test_milestone4_migrations_upgrade_downgrade_and_restore_head() -> None:
         assert _table_exists("recognition_attendance_attempts")
 
         command.upgrade(config, "head")
-        assert _revision() == _OTP_REVISION
+        assert _revision() == _PASSWORD_RESET_REVISION
         assert _table_exists("recognition_attendance_reviews")
         assert _table_exists("otp_challenges")
+        assert _enum_values("otp_purpose") == ["login", "password_reset"]
     finally:
         command.upgrade(config, "head")

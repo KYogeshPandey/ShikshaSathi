@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { PasswordResetFlow } from "../components/PasswordResetFlow";
 import { SlowRequestNotice } from "../components/SlowRequestNotice";
 import { homePathForRole } from "../routes/config";
 import { isOtpChallenge, type OtpChallengeInfo } from "../types/auth";
@@ -76,6 +77,8 @@ export function LoginPage() {
   const [resendRemaining, setResendRemaining] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   const {
     register,
     handleSubmit,
@@ -179,6 +182,30 @@ export function LoginPage() {
     clearErrors("root");
   };
 
+  const startPasswordReset = () => {
+    setChallenge(null);
+    setOtp("");
+    setOtpError(null);
+    setResendMessage(null);
+    setPasswordResetSuccess(false);
+    clearErrors("root");
+    setShowPasswordReset(true);
+  };
+
+  const returnToSignIn = (resetCompleted = false) => {
+    setShowPasswordReset(false);
+    setPasswordResetSuccess(resetCompleted);
+    setChallenge(null);
+    setOtp("");
+    setOtpError(null);
+    setResendMessage(null);
+    setResendRemaining(0);
+    if (resetCompleted) {
+      reset({ email: "", password: "" });
+    }
+    clearErrors("root");
+  };
+
   return (
     <main className="login-page">
       <section className="login-intro" aria-labelledby="login-heading">
@@ -201,7 +228,9 @@ export function LoginPage() {
           <span className="brand-mark" aria-hidden="true">S</span>
           <span>ShikshaSathi</span>
         </a>
-        {challenge ? (
+        {showPasswordReset ? (
+          <PasswordResetFlow onReturnToSignIn={returnToSignIn} />
+        ) : challenge ? (
           <form className="login-form" key="otp" onSubmit={onVerify} noValidate>
             <div>
               <p className="eyebrow">Email verification</p>
@@ -298,6 +327,18 @@ export function LoginPage() {
               <p className="field-error" id="password-error">{errors.password.message}</p>
             )}
           </div>
+
+          <div className="login-form-action">
+            <button className="text-button" onClick={startPasswordReset} type="button">
+              Forgot password?
+            </button>
+          </div>
+
+          {passwordResetSuccess ? (
+            <p className="success-message" role="status">
+              Password updated. Sign in with your new password.
+            </p>
+          ) : null}
 
           {errors.root?.message && (
             <div className="form-error" role="alert">

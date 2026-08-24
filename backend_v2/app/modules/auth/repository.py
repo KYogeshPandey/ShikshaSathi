@@ -100,6 +100,24 @@ class OtpChallengeRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_active_for_user(
+        self,
+        *,
+        user_id: uuid.UUID,
+        purpose: OtpPurpose,
+        for_update: bool = False,
+    ) -> OtpChallenge | None:
+        stmt = select(OtpChallenge).where(
+            OtpChallenge.user_id == user_id,
+            OtpChallenge.purpose == purpose,
+            OtpChallenge.consumed_at.is_(None),
+            OtpChallenge.invalidated_at.is_(None),
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def lock_user(self, user_id: uuid.UUID) -> None:
         """Serialize challenge replacement for one user."""
         await self._session.execute(select(User.id).where(User.id == user_id).with_for_update())
@@ -128,6 +146,7 @@ class OtpChallengeRepository:
         *,
         challenge_id: uuid.UUID,
         user_id: uuid.UUID,
+        purpose: OtpPurpose,
         otp_hash: str,
         expires_at: datetime,
         max_attempts: int,
@@ -136,7 +155,7 @@ class OtpChallengeRepository:
         challenge = OtpChallenge(
             id=challenge_id,
             user_id=user_id,
-            purpose=OtpPurpose.LOGIN,
+            purpose=purpose,
             otp_hash=otp_hash,
             expires_at=expires_at,
             max_attempts=max_attempts,
@@ -160,6 +179,20 @@ class OtpChallengeRepository:
         return exhausted
 
     async def consume(self, challenge: OtpChallenge, *, now: datetime) -> None:
+        challenge.consumed_at = now
+        await self._session.flush()
+
+    async def consume_for_password_reset(
+        self,
+        challenge: OtpChallenge,
+        *,
+        grant_hash: str,
+        grant_expires_at: datetime,
+        now: datetime,
+    ) -> None:
+        """Consume the OTP and atomically replace its digest with a reset-grant digest."""
+        challenge.otp_hash = grant_hash
+        challenge.expires_at = grant_expires_at
         challenge.consumed_at = now
         await self._session.flush()
 

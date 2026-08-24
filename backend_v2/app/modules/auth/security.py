@@ -208,7 +208,7 @@ def hash_refresh_token(raw_token: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Login OTPs (short-lived, keyed hashes only)
+# Authentication OTPs and password-reset grants
 # ---------------------------------------------------------------------------
 
 
@@ -236,6 +236,50 @@ def verify_login_otp(
     candidate_hash = hash_login_otp(
         challenge_id=challenge_id,
         otp=otp,
+        settings=settings,
+    )
+    return hmac.compare_digest(candidate_hash, expected_hash)
+
+
+def hash_password_reset_otp(*, challenge_id: uuid.UUID, otp: str, settings: Settings) -> str:
+    """Return a purpose-separated HMAC digest for a password-reset OTP."""
+    payload = f"password_reset:{challenge_id}:{otp}".encode()
+    return hmac.new(settings.SECRET_KEY.encode(), payload, hashlib.sha256).hexdigest()
+
+
+def verify_password_reset_otp(
+    *, challenge_id: uuid.UUID, otp: str, expected_hash: str, settings: Settings
+) -> bool:
+    """Compare a password-reset OTP digest in constant time."""
+    candidate_hash = hash_password_reset_otp(
+        challenge_id=challenge_id,
+        otp=otp,
+        settings=settings,
+    )
+    return hmac.compare_digest(candidate_hash, expected_hash)
+
+
+_PASSWORD_RESET_GRANT_BYTES = 48
+
+
+def generate_password_reset_grant() -> str:
+    """Return a high-entropy opaque grant that is never an authentication token."""
+    return secrets.token_urlsafe(_PASSWORD_RESET_GRANT_BYTES)
+
+
+def hash_password_reset_grant(*, challenge_id: uuid.UUID, grant: str, settings: Settings) -> str:
+    """Return the purpose-bound digest persisted after reset OTP verification."""
+    payload = f"password_reset_grant:{challenge_id}:{grant}".encode()
+    return hmac.new(settings.SECRET_KEY.encode(), payload, hashlib.sha256).hexdigest()
+
+
+def verify_password_reset_grant(
+    *, challenge_id: uuid.UUID, grant: str, expected_hash: str, settings: Settings
+) -> bool:
+    """Compare a password-reset grant digest in constant time."""
+    candidate_hash = hash_password_reset_grant(
+        challenge_id=challenge_id,
+        grant=grant,
         settings=settings,
     )
     return hmac.compare_digest(candidate_hash, expected_hash)

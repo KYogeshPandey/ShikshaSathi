@@ -27,6 +27,7 @@ def _enum_values(enum_cls: type[Enum]) -> list[str]:
 
 class OtpPurpose(StrEnum):
     LOGIN = "login"
+    PASSWORD_RESET = "password_reset"
 
 
 class RefreshSession(Base):
@@ -83,7 +84,7 @@ class RefreshSession(Base):
 
 
 class OtpChallenge(Base):
-    """Hashed, expiring, one-time login verification challenge."""
+    """Hashed, expiring, one-time authentication challenge."""
 
     __tablename__ = "otp_challenges"
 

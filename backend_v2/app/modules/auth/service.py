@@ -21,7 +21,9 @@ from app.modules.auth.email import OtpEmailSender
 from app.modules.auth.errors import (
     ExpiredOtpChallengeError,
     InvalidCredentialsError,
+    InvalidNewPasswordError,
     InvalidOtpChallengeError,
+    InvalidPasswordResetGrantError,
     InvalidRefreshTokenError,
     OtpAttemptsExceededError,
     OtpDeliveryUnavailableError,
@@ -33,11 +35,18 @@ from app.modules.auth.repository import OtpChallengeRepository, RefreshSessionRe
 from app.modules.auth.security import (
     create_access_token,
     generate_login_otp,
+    generate_password_reset_grant,
     generate_refresh_token,
     hash_login_otp,
+    hash_password,
+    hash_password_reset_grant,
+    hash_password_reset_otp,
     hash_refresh_token,
+    validate_password_strength,
     verify_login_otp,
     verify_password,
+    verify_password_reset_grant,
+    verify_password_reset_otp,
     verify_password_timing_safe_dummy,
 )
 from app.modules.users.models import User
@@ -71,6 +80,19 @@ class OtpChallengeResult:
     challenge_id: uuid.UUID
     expires_in_seconds: int
     resend_available_in_seconds: int
+
+
+@dataclass(frozen=True)
+class PasswordResetRequestResult:
+    expires_in_seconds: int
+    resend_available_in_seconds: int
+
+
+@dataclass(frozen=True)
+class PasswordResetGrantResult:
+    reset_id: uuid.UUID
+    reset_token: str
+    expires_in_seconds: int
 
 
 class AuthService:
@@ -114,7 +136,11 @@ class AuthService:
             purpose=OtpPurpose.LOGIN,
             now=now,
         )
-        challenge, raw_otp = await self._create_otp_challenge(user=user, now=now)
+        challenge, raw_otp = await self._create_otp_challenge(
+            user=user,
+            purpose=OtpPurpose.LOGIN,
+            now=now,
+        )
         await self._session.commit()
         await self._deliver_otp(
             challenge=challenge,
@@ -204,7 +230,11 @@ class AuthService:
             raise InvalidOtpChallengeError()
 
         await self._otp_challenges.invalidate(existing, now=now)
-        challenge, raw_otp = await self._create_otp_challenge(user=user, now=now)
+        challenge, raw_otp = await self._create_otp_challenge(
+            user=user,
+            purpose=OtpPurpose.LOGIN,
+            now=now,
+        )
         await self._session.commit()
         await self._deliver_otp(
             challenge=challenge,
@@ -218,6 +248,184 @@ class AuthService:
             challenge_id=str(challenge.id),
         )
         return self._otp_result(challenge, now=now)
+
+    async def request_password_reset(
+        self,
+        *,
+        email: str,
+        email_sender: OtpEmailSender,
+    ) -> PasswordResetRequestResult:
+        """Create and deliver a reset challenge without disclosing account state."""
+        user = await self._users.get_by_email(email)
+        if user is None or not user.is_active:
+            return self._password_reset_request_result()
+
+        now = datetime.now(UTC)
+        await self._otp_challenges.lock_user(user.id)
+        await self._otp_challenges.invalidate_active_for_user(
+            user_id=user.id,
+            purpose=OtpPurpose.PASSWORD_RESET,
+            now=now,
+        )
+        challenge, raw_otp = await self._create_otp_challenge(
+            user=user,
+            purpose=OtpPurpose.PASSWORD_RESET,
+            now=now,
+        )
+        await self._session.commit()
+        delivered = await self._deliver_password_reset_otp(
+            challenge=challenge,
+            recipient=user.email,
+            raw_otp=raw_otp,
+            email_sender=email_sender,
+        )
+        if delivered:
+            logger.info(
+                "password_reset_challenge_created",
+                user_id=str(user.id),
+                challenge_id=str(challenge.id),
+            )
+        return self._password_reset_request_result()
+
+    async def resend_password_reset_otp(
+        self,
+        *,
+        email: str,
+        email_sender: OtpEmailSender,
+    ) -> PasswordResetRequestResult:
+        """Replace a reset OTP when allowed while keeping every response generic."""
+        user = await self._users.get_by_email(email)
+        if user is None or not user.is_active:
+            return self._password_reset_request_result()
+
+        now = datetime.now(UTC)
+        await self._otp_challenges.lock_user(user.id)
+        existing = await self._otp_challenges.get_active_for_user(
+            user_id=user.id,
+            purpose=OtpPurpose.PASSWORD_RESET,
+            for_update=True,
+        )
+        if existing is not None:
+            cooldown_ends = _as_aware_utc(existing.last_sent_at) + timedelta(
+                seconds=self._settings.LOGIN_OTP_RESEND_COOLDOWN_SECONDS
+            )
+            if cooldown_ends > now:
+                return self._password_reset_request_result()
+            await self._otp_challenges.invalidate(existing, now=now)
+
+        challenge, raw_otp = await self._create_otp_challenge(
+            user=user,
+            purpose=OtpPurpose.PASSWORD_RESET,
+            now=now,
+        )
+        await self._session.commit()
+        await self._deliver_password_reset_otp(
+            challenge=challenge,
+            recipient=user.email,
+            raw_otp=raw_otp,
+            email_sender=email_sender,
+        )
+        return self._password_reset_request_result()
+
+    async def verify_password_reset_otp(
+        self,
+        *,
+        email: str,
+        otp: str,
+    ) -> PasswordResetGrantResult:
+        """Exchange a correct reset OTP for a short-lived, server-backed grant."""
+        user = await self._users.get_by_email(email)
+        if user is None or not user.is_active:
+            raise InvalidOtpChallengeError()
+
+        await self._otp_challenges.lock_user(user.id)
+        challenge = await self._otp_challenges.get_active_for_user(
+            user_id=user.id,
+            purpose=OtpPurpose.PASSWORD_RESET,
+            for_update=True,
+        )
+        now = datetime.now(UTC)
+        self._require_usable_challenge(challenge, purpose=OtpPurpose.PASSWORD_RESET)
+        assert challenge is not None
+        if _as_aware_utc(challenge.expires_at) <= now:
+            raise ExpiredOtpChallengeError()
+
+        if not verify_password_reset_otp(
+            challenge_id=challenge.id,
+            otp=otp,
+            expected_hash=challenge.otp_hash,
+            settings=self._settings,
+        ):
+            exhausted = await self._otp_challenges.record_failed_attempt(challenge, now=now)
+            await self._session.commit()
+            if exhausted:
+                raise OtpAttemptsExceededError()
+            raise InvalidOtpChallengeError()
+
+        raw_grant = generate_password_reset_grant()
+        grant_expires_at = now + timedelta(seconds=self._settings.PASSWORD_RESET_GRANT_TTL_SECONDS)
+        await self._otp_challenges.consume_for_password_reset(
+            challenge,
+            grant_hash=hash_password_reset_grant(
+                challenge_id=challenge.id,
+                grant=raw_grant,
+                settings=self._settings,
+            ),
+            grant_expires_at=grant_expires_at,
+            now=now,
+        )
+        await self._session.commit()
+        return PasswordResetGrantResult(
+            reset_id=challenge.id,
+            reset_token=raw_grant,
+            expires_in_seconds=self._settings.PASSWORD_RESET_GRANT_TTL_SECONDS,
+        )
+
+    async def confirm_password_reset(
+        self,
+        *,
+        reset_id: uuid.UUID,
+        reset_token: str,
+        new_password: str,
+    ) -> None:
+        """Use a verified grant once, update the password, and revoke refresh sessions."""
+        challenge = await self._otp_challenges.get_by_id(reset_id, for_update=True)
+        now = datetime.now(UTC)
+        if (
+            challenge is None
+            or challenge.purpose is not OtpPurpose.PASSWORD_RESET
+            or challenge.consumed_at is None
+            or challenge.invalidated_at is not None
+            or _as_aware_utc(challenge.expires_at) <= now
+            or not verify_password_reset_grant(
+                challenge_id=challenge.id,
+                grant=reset_token,
+                expected_hash=challenge.otp_hash,
+                settings=self._settings,
+            )
+        ):
+            raise InvalidPasswordResetGrantError()
+
+        user = await self._users.get_by_id(challenge.user_id)
+        if user is None or not user.is_active:
+            await self._otp_challenges.invalidate(challenge, now=now)
+            await self._session.commit()
+            raise InvalidPasswordResetGrantError()
+
+        try:
+            validate_password_strength(new_password)
+        except ValueError as exc:
+            raise InvalidNewPasswordError(str(exc)) from exc
+
+        await self._users.update_password(user, password_hash=hash_password(new_password))
+        await self._refresh_sessions.revoke_all_for_user(user.id, now=now)
+        await self._otp_challenges.invalidate(challenge, now=now)
+        await self._session.commit()
+        logger.info(
+            "password_reset_completed",
+            user_id=str(user.id),
+            challenge_id=str(challenge.id),
+        )
 
     async def _validate_credentials(self, *, email: str, password: str) -> User:
         user = await self._users.get_by_email(email)
@@ -239,6 +447,7 @@ class AuthService:
         self,
         *,
         user: User,
+        purpose: OtpPurpose,
         now: datetime,
     ) -> tuple[OtpChallenge, str]:
         challenge_id = uuid.uuid4()
@@ -246,10 +455,19 @@ class AuthService:
         challenge = await self._otp_challenges.create(
             challenge_id=challenge_id,
             user_id=user.id,
-            otp_hash=hash_login_otp(
-                challenge_id=challenge_id,
-                otp=raw_otp,
-                settings=self._settings,
+            purpose=purpose,
+            otp_hash=(
+                hash_login_otp(
+                    challenge_id=challenge_id,
+                    otp=raw_otp,
+                    settings=self._settings,
+                )
+                if purpose is OtpPurpose.LOGIN
+                else hash_password_reset_otp(
+                    challenge_id=challenge_id,
+                    otp=raw_otp,
+                    settings=self._settings,
+                )
             ),
             expires_at=now + timedelta(seconds=self._settings.LOGIN_OTP_TTL_SECONDS),
             max_attempts=self._settings.LOGIN_OTP_MAX_ATTEMPTS,
@@ -283,6 +501,33 @@ class AuthService:
             )
             raise OtpDeliveryUnavailableError() from exc
 
+    async def _deliver_password_reset_otp(
+        self,
+        *,
+        challenge: OtpChallenge,
+        recipient: str,
+        raw_otp: str,
+        email_sender: OtpEmailSender,
+    ) -> bool:
+        try:
+            await email_sender.send_password_reset_otp(
+                recipient=recipient,
+                otp=raw_otp,
+                expires_in_minutes=self._settings.LOGIN_OTP_TTL_SECONDS // 60,
+            )
+            return True
+        except Exception as exc:
+            persisted = await self._otp_challenges.get_by_id(challenge.id, for_update=True)
+            if persisted is not None and persisted.invalidated_at is None:
+                await self._otp_challenges.invalidate(persisted, now=datetime.now(UTC))
+                await self._session.commit()
+            logger.error(
+                "password_reset_delivery_failed",
+                challenge_id=str(challenge.id),
+                exc_type=type(exc).__name__,
+            )
+            return False
+
     def _require_otp_enabled(self) -> None:
         if not self._settings.LOGIN_OTP_ENABLED:
             raise OtpLoginNotEnabledError()
@@ -290,16 +535,24 @@ class AuthService:
     def _require_usable_challenge(
         self,
         challenge: OtpChallenge | None,
+        *,
+        purpose: OtpPurpose = OtpPurpose.LOGIN,
     ) -> None:
         if (
             challenge is None
-            or challenge.purpose is not OtpPurpose.LOGIN
+            or challenge.purpose is not purpose
             or challenge.consumed_at is not None
             or challenge.invalidated_at is not None
         ):
             raise InvalidOtpChallengeError()
         if challenge.attempt_count >= challenge.max_attempts:
             raise OtpAttemptsExceededError()
+
+    def _password_reset_request_result(self) -> PasswordResetRequestResult:
+        return PasswordResetRequestResult(
+            expires_in_seconds=self._settings.LOGIN_OTP_TTL_SECONDS,
+            resend_available_in_seconds=self._settings.LOGIN_OTP_RESEND_COOLDOWN_SECONDS,
+        )
 
     def _otp_result(self, challenge: OtpChallenge, *, now: datetime) -> OtpChallengeResult:
         expires_in = max(1, int((_as_aware_utc(challenge.expires_at) - now).total_seconds()))

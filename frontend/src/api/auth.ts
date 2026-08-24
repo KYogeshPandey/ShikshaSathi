@@ -6,6 +6,9 @@ import {
   type LoginResponse,
   type LoginResult,
   type OtpChallengeInfo,
+  type PasswordResetConfirmResult,
+  type PasswordResetGrant,
+  type PasswordResetRequestInfo,
 } from "../types/auth";
 
 export const authApi = {
@@ -43,6 +46,48 @@ export const authApi = {
     return apiClient.post<OtpChallengeInfo>(
       "/auth/otp/resend",
       { challenge_id: challengeId },
+      { auth: false, retryOnUnauthorized: false },
+    );
+  },
+
+  async requestPasswordReset(email: string): Promise<PasswordResetRequestInfo> {
+    return apiClient.post<PasswordResetRequestInfo>(
+      "/auth/password-reset/request",
+      { email },
+      { auth: false, retryOnUnauthorized: false },
+    );
+  },
+
+  async verifyPasswordResetOtp(email: string, otp: string): Promise<PasswordResetGrant> {
+    return apiClient.post<PasswordResetGrant>(
+      "/auth/password-reset/verify",
+      { email, otp },
+      { auth: false, retryOnUnauthorized: false },
+    );
+  },
+
+  async resendPasswordResetOtp(email: string): Promise<PasswordResetRequestInfo> {
+    return apiClient.post<PasswordResetRequestInfo>(
+      "/auth/password-reset/resend",
+      { email },
+      { auth: false, retryOnUnauthorized: false },
+    );
+  },
+
+  async confirmPasswordReset(
+    resetId: string,
+    resetToken: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<PasswordResetConfirmResult> {
+    return apiClient.post<PasswordResetConfirmResult>(
+      "/auth/password-reset/confirm",
+      {
+        reset_id: resetId,
+        reset_token: resetToken,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      },
       { auth: false, retryOnUnauthorized: false },
     );
   },

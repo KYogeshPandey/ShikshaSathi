@@ -157,6 +157,12 @@ Errors bubble up as typed exceptions (see §7) and are translated to a consisten
   limits are server-side. SMTP is environment configured; the explicit
   development-log adapter is rejected in production, and OTPs are never
   returned in API responses.
+- Password reset reuses the same challenge table under a separate enum purpose.
+  Verification replaces the OTP digest with a short-lived opaque reset-grant
+  digest in the same row. The grant is accepted only by reset confirmation,
+  never by access-token authentication, and is invalidated after one password
+  update. Confirmation revokes all refresh sessions; existing stateless access
+  tokens retain only their normal short remaining lifetime.
 
 ## 10. Frontend state & API flow
 

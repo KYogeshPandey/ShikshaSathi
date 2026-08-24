@@ -120,6 +120,7 @@ The screenshots above show the live application UI. Personal account information
 - No public self-registration
 - Environment-based secret management
 - Optional email OTP verification before JWT/refresh-session issuance
+- Secure OTP-based forgot-password flow with refresh-session revocation
 - No real `.env` or private-key files committed to Git
 
 ### Optional Face Recognition
@@ -481,7 +482,7 @@ Migrations are managed with Alembic.
 Current release migration head:
 
 ```text
-c52d7a40e8f1
+d63e8b51f9a2
 ```
 
 ---

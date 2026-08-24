@@ -77,3 +77,25 @@ generation, keyed hash-only storage, one-time consumption, attempt maximum,
 resend cooldown/replacement, and independent per-client endpoint limits. OTPs
 are not returned by the production API. Any syntactically valid registered
 email works regardless of domain; this does not add self-registration.
+
+## Secure forgot password
+
+The login card provides `Forgot password?` and an email -> reset OTP -> new
+password flow. Request and resend return the same public response for active,
+inactive, and nonexistent accounts. Codes use the existing generator,
+hash-only challenge storage, expiry, attempt bound, cooldown, SMTP/development
+adapters, and independent server-side rate limits.
+
+Password reset has its own `password_reset` OTP purpose. Login and reset codes
+cannot cross-authorize. Successful OTP verification consumes the code and
+atomically replaces its digest with a short-lived high-entropy reset-grant
+digest in the same row. The raw grant is returned once, is bound to that row
+and user, cannot authenticate API requests, and is invalidated after one
+password update. The new password passes the existing strength policy and is
+hashed with the existing Argon2id helper. Every active refresh session for the
+user is revoked. Stateless access tokens remain valid only until their normal
+short expiry because the existing JWT architecture has no recall list.
+
+Use the same email provider configuration documented above. Password reset
+does not require login OTP to be enabled, but provider `none` cannot deliver
+mail. Apply Alembic head `d63e8b51f9a2` before use.

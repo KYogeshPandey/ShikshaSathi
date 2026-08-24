@@ -254,6 +254,11 @@ textarea:focus-visible {
   line-height: 1.55;
 }
 
+.login-form-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .field-stack {
   display: grid;
   gap: 0.5rem;

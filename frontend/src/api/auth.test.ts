@@ -69,3 +69,70 @@ describe("OTP auth API flow", () => {
     );
   });
 });
+
+describe("password reset API flow", () => {
+  it("requests and resends with generic same-origin auth-free calls", async () => {
+    const publicResult = {
+      detail: "If an active account exists for that email, a verification code has been sent.",
+      expires_in: 300,
+      resend_available_in: 30,
+    };
+    const post = vi.spyOn(apiClient, "post").mockResolvedValue(publicResult);
+
+    await expect(authApi.requestPasswordReset(user.email)).resolves.toEqual(publicResult);
+    expect(post).toHaveBeenCalledWith(
+      "/auth/password-reset/request",
+      { email: user.email },
+      { auth: false, retryOnUnauthorized: false },
+    );
+
+    await expect(authApi.resendPasswordResetOtp(user.email)).resolves.toEqual(publicResult);
+    expect(post).toHaveBeenLastCalledWith(
+      "/auth/password-reset/resend",
+      { email: user.email },
+      { auth: false, retryOnUnauthorized: false },
+    );
+  });
+
+  it("never creates a client auth session while verifying or confirming reset", async () => {
+    const grant = {
+      reset_id: "reset-id",
+      reset_token: "single-purpose-reset-token",
+      expires_in: 120,
+    };
+    const post = vi
+      .spyOn(apiClient, "post")
+      .mockResolvedValueOnce(grant)
+      .mockResolvedValueOnce({ detail: "Password updated." });
+    const get = vi.spyOn(apiClient, "get");
+
+    await expect(authApi.verifyPasswordResetOtp(user.email, "123456")).resolves.toEqual(grant);
+    expect(post).toHaveBeenCalledWith(
+      "/auth/password-reset/verify",
+      { email: user.email, otp: "123456" },
+      { auth: false, retryOnUnauthorized: false },
+    );
+    expect(authSession.getAccessToken()).toBeNull();
+
+    await expect(
+      authApi.confirmPasswordReset(
+        grant.reset_id,
+        grant.reset_token,
+        "new-password-secure-456",
+        "new-password-secure-456",
+      ),
+    ).resolves.toEqual({ detail: "Password updated." });
+    expect(post).toHaveBeenLastCalledWith(
+      "/auth/password-reset/confirm",
+      {
+        reset_id: "reset-id",
+        reset_token: "single-purpose-reset-token",
+        new_password: "new-password-secure-456",
+        confirm_password: "new-password-secure-456",
+      },
+      { auth: false, retryOnUnauthorized: false },
+    );
+    expect(authSession.getAccessToken()).toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+});

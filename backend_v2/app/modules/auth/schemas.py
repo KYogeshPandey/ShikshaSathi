@@ -12,9 +12,9 @@ ever crosses the API boundary.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.modules.users.normalization import normalize_email
 from app.modules.users.schemas import UserRead
@@ -59,6 +59,48 @@ class OtpVerifyRequest(BaseModel):
 
 class OtpResendRequest(BaseModel):
     challenge_id: uuid.UUID
+
+
+class PasswordResetEmailRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email", mode="after")
+    @classmethod
+    def _normalize(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class PasswordResetRequestResponse(BaseModel):
+    detail: str = "If an active account exists for that email, a verification code has been sent."
+    expires_in: int = Field(..., ge=1)
+    resend_available_in: int = Field(..., ge=0)
+
+
+class PasswordResetVerifyRequest(PasswordResetEmailRequest):
+    otp: str = Field(..., pattern=r"^\d{6}$")
+
+
+class PasswordResetGrantResponse(BaseModel):
+    reset_id: uuid.UUID
+    reset_token: str
+    expires_in: int = Field(..., ge=1)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    reset_id: uuid.UUID
+    reset_token: str = Field(..., min_length=32, max_length=256)
+    new_password: str = Field(..., min_length=1, max_length=128)
+    confirm_password: str = Field(..., min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> Self:
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirmation must match.")
+        return self
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    detail: str = "Password updated. Sign in with your new password."
 
 
 class RefreshResponse(BaseModel):

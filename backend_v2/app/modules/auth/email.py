@@ -31,11 +31,29 @@ class OtpEmailSender(Protocol):
         expires_in_minutes: int,
     ) -> None: ...
 
+    async def send_password_reset_otp(
+        self,
+        *,
+        recipient: str,
+        otp: str,
+        expires_in_minutes: int,
+    ) -> None: ...
+
 
 class DisabledOtpEmailSender:
     """Inert adapter used while the feature flag is off."""
 
     async def send_login_otp(
+        self,
+        *,
+        recipient: str,
+        otp: str,
+        expires_in_minutes: int,
+    ) -> None:
+        del recipient, otp, expires_in_minutes
+        raise RuntimeError("OTP email delivery is not configured.")
+
+    async def send_password_reset_otp(
         self,
         *,
         recipient: str,
@@ -63,6 +81,20 @@ class DevelopmentLogOtpEmailSender:
             expires_in_minutes=expires_in_minutes,
         )
 
+    async def send_password_reset_otp(
+        self,
+        *,
+        recipient: str,
+        otp: str,
+        expires_in_minutes: int,
+    ) -> None:
+        logger.warning(
+            "development_password_reset_otp",
+            recipient=recipient,
+            otp=otp,
+            expires_in_minutes=expires_in_minutes,
+        )
+
 
 class SmtpOtpEmailSender:
     def __init__(self, settings: Settings) -> None:
@@ -84,6 +116,26 @@ class SmtpOtpEmailSender:
             f"{otp}\n\n"
             f"This code expires in {expires_in_minutes} minutes. "
             "If you did not request it, you can ignore this email."
+        )
+        await asyncio.to_thread(self._send_sync, message)
+
+    async def send_password_reset_otp(
+        self,
+        *,
+        recipient: str,
+        otp: str,
+        expires_in_minutes: int,
+    ) -> None:
+        message = EmailMessage()
+        message["Subject"] = "ShikshaSathi password reset"
+        message["From"] = str(self._settings.SMTP_FROM_EMAIL)
+        message["To"] = recipient
+        message.set_content(
+            "ShikshaSathi Password Reset\n\n"
+            "Your password reset verification code is:\n\n"
+            f"{otp}\n\n"
+            f"This code expires in {expires_in_minutes} minutes. "
+            "If you did not request a password reset, you can ignore this email."
         )
         await asyncio.to_thread(self._send_sync, message)
 

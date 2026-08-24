@@ -9,6 +9,9 @@ import type {
   LoginCredentials,
   LoginResult,
   OtpChallengeInfo,
+  PasswordResetConfirmResult,
+  PasswordResetGrant,
+  PasswordResetRequestInfo,
   UserRole,
 } from "../types/auth";
 import { AuthProvider } from "../auth/AuthProvider";
@@ -21,6 +24,17 @@ const authApiMocks = vi.hoisted(() => ({
   login: vi.fn<(credentials: LoginCredentials) => Promise<LoginResult>>(),
   verifyOtp: vi.fn<(challengeId: string, otp: string) => Promise<AuthUser>>(),
   resendOtp: vi.fn<(challengeId: string) => Promise<OtpChallengeInfo>>(),
+  requestPasswordReset: vi.fn<(email: string) => Promise<PasswordResetRequestInfo>>(),
+  verifyPasswordResetOtp: vi.fn<(email: string, otp: string) => Promise<PasswordResetGrant>>(),
+  resendPasswordResetOtp: vi.fn<(email: string) => Promise<PasswordResetRequestInfo>>(),
+  confirmPasswordReset: vi.fn<
+    (
+      resetId: string,
+      resetToken: string,
+      newPassword: string,
+      confirmPassword: string,
+    ) => Promise<PasswordResetConfirmResult>
+  >(),
   logout: vi.fn<() => Promise<void>>(),
 }));
 
@@ -111,6 +125,10 @@ beforeEach(() => {
   authApiMocks.login.mockReset();
   authApiMocks.verifyOtp.mockReset();
   authApiMocks.resendOtp.mockReset();
+  authApiMocks.requestPasswordReset.mockReset();
+  authApiMocks.verifyPasswordResetOtp.mockReset();
+  authApiMocks.resendPasswordResetOtp.mockReset();
+  authApiMocks.confirmPasswordReset.mockReset();
   authApiMocks.logout.mockReset();
   authApiMocks.restoreSession.mockResolvedValue(null);
   authApiMocks.logout.mockResolvedValue();
@@ -280,6 +298,116 @@ describe("application and authentication", () => {
     expect(
       await screen.findByRole("button", { name: "Resend code" }, { timeout: 2_500 }),
     ).toBeEnabled();
+  });
+
+  it("requests password reset with generic copy and an accessible OTP step", async () => {
+    authApiMocks.requestPasswordReset.mockResolvedValue({
+      detail: "If an active account exists for that email, a verification code has been sent.",
+      expires_in: 300,
+      resend_available_in: 30,
+    });
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.click(await screen.findByRole("button", { name: /forgot password/i }));
+    expect(screen.getByRole("heading", { name: /reset your password/i })).toBeVisible();
+    expect(screen.getByText(/enter your registered email address/i)).toBeVisible();
+    await user.type(screen.getByLabelText(/^email$/i), "person@ordinary-domain.dev");
+    await user.click(screen.getByRole("button", { name: /send verification code/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /enter your verification code/i }),
+    ).toBeVisible();
+    expect(screen.getByText(/if an active account exists/i)).toBeVisible();
+    expect(screen.getByLabelText(/verification code/i)).toHaveAttribute(
+      "autocomplete",
+      "one-time-code",
+    );
+    expect(authApiMocks.requestPasswordReset).toHaveBeenCalledWith(
+      "person@ordinary-domain.dev",
+    );
+  });
+
+  it("handles invalid reset OTP, resend, password mismatch, success, and return to sign in", async () => {
+    const requestInfo = {
+      detail: "If an active account exists for that email, a verification code has been sent.",
+      expires_in: 300,
+      resend_available_in: 0,
+    };
+    authApiMocks.requestPasswordReset.mockResolvedValue(requestInfo);
+    authApiMocks.resendPasswordResetOtp.mockResolvedValue(requestInfo);
+    authApiMocks.verifyPasswordResetOtp
+      .mockRejectedValueOnce(new ApiError(401, "INVALID_OTP", "Internal detail."))
+      .mockResolvedValueOnce({
+        reset_id: "reset-id",
+        reset_token: "reset-token-not-an-access-token",
+        expires_in: 120,
+      });
+    authApiMocks.confirmPasswordReset.mockResolvedValue({
+      detail: "Password updated. Sign in with your new password.",
+    });
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.click(await screen.findByRole("button", { name: /forgot password/i }));
+    await user.type(screen.getByLabelText(/^email$/i), "person@ordinary-domain.dev");
+    await user.click(screen.getByRole("button", { name: /send verification code/i }));
+    await user.type(await screen.findByLabelText(/verification code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /^verify code$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect or has already been used/i);
+
+    await user.click(screen.getByRole("button", { name: /resend code/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/if the account is active/i);
+    expect(authApiMocks.resendPasswordResetOtp).toHaveBeenCalledWith(
+      "person@ordinary-domain.dev",
+    );
+
+    await user.type(screen.getByLabelText(/verification code/i), "654321");
+    await user.click(screen.getByRole("button", { name: /^verify code$/i }));
+    expect(await screen.findByRole("heading", { name: /choose a new password/i })).toBeVisible();
+
+    await user.type(screen.getByLabelText(/^new password$/i), "new-password-secure-456");
+    await user.type(screen.getByLabelText(/confirm new password/i), "different-password-789");
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+    expect(await screen.findByText(/passwords do not match/i)).toBeVisible();
+    expect(authApiMocks.confirmPasswordReset).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText(/confirm new password/i));
+    await user.type(screen.getByLabelText(/confirm new password/i), "new-password-secure-456");
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+    expect(await screen.findByRole("heading", { name: /password has been reset/i })).toBeVisible();
+    expect(authApiMocks.confirmPasswordReset).toHaveBeenCalledWith(
+      "reset-id",
+      "reset-token-not-an-access-token",
+      "new-password-secure-456",
+      "new-password-secure-456",
+    );
+
+    await user.click(screen.getByRole("button", { name: /return to sign in/i }));
+    expect(screen.getByRole("heading", { name: /sign in to continue/i })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(/password updated/i);
+  });
+
+  it("shows password-reset loading and sanitized unavailable feedback", async () => {
+    let rejectRequest: ((reason: unknown) => void) | undefined;
+    authApiMocks.requestPasswordReset.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    renderApplication("/login");
+
+    await user.click(await screen.findByRole("button", { name: /forgot password/i }));
+    await user.type(screen.getByLabelText(/^email$/i), "person@ordinary-domain.dev");
+    await user.click(screen.getByRole("button", { name: /send verification code/i }));
+    expect(screen.getByRole("button", { name: "Sending code…" })).toBeDisabled();
+
+    rejectRequest?.(new ApiError(503, "SERVICE_UNAVAILABLE", "Sensitive internal detail."));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /password reset service is temporarily unavailable/i,
+    );
+    expect(screen.queryByText(/sensitive internal detail/i)).not.toBeInTheDocument();
   });
 
   it("shows OTP verification loading and sanitized backend-unavailable feedback", async () => {
