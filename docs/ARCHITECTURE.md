@@ -133,8 +133,9 @@ flowchart LR
 credentials create a purpose-bound, expiring challenge but do not create an
 authenticated session. OTPs are cryptographically generated, stored only as
 keyed digests, one-time use, attempt-limited, resend-replaced, cooldown-bound,
-and rate-limited. SMTP is environment configured; the development log adapter
-is rejected in production.
+and rate-limited. Production delivery can use ordinary SMTP or Brevo's fixed
+HTTPS transactional-email endpoint. The development log adapter is rejected
+in production.
 
 ### Password reset
 
@@ -269,13 +270,16 @@ flowchart LR
 
 The browser uses same-origin `/api/v1` paths. Vercel serves the SPA and proxies
 API requests to Render. Render runs the backend Docker image; Neon provides
-PostgreSQL. CORS, trusted hosts, secrets, SMTP, cookie security, and optional
-recognition-provider/model configuration remain explicit environment values.
+PostgreSQL. CORS, trusted hosts, secrets, email-provider credentials, cookie
+security, and optional recognition-provider/model configuration remain
+explicit environment values.
 
 The hosted deployment does not imply that face recognition is enabled. With
 `FACE_RECOGNITION_PROVIDER=none`, recognition endpoints report the configured
 unavailable state and no hosted inference occurs. Production OTP email also
-does not work until SMTP is deliberately configured.
+does not work until either SMTP or Brevo HTTPS delivery is deliberately
+configured. Brevo is the preferred option where the host restricts outbound
+SMTP; its API key is sent only to the fixed HTTPS endpoint and is never logged.
 
 ### Docker Compose
 

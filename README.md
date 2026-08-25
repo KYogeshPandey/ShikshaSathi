@@ -199,7 +199,7 @@ committed templates contain placeholders only.
 | Database | `DATABASE_URL` or Compose `POSTGRES_*` values |
 | Security | `SECRET_KEY`, `CORS_ALLOWED_ORIGINS`, `TRUSTED_HOSTS` |
 | Sessions | access/refresh expiry and `REFRESH_TOKEN_COOKIE_*` |
-| OTP/email | `LOGIN_OTP_ENABLED`, `OTP_EMAIL_PROVIDER`, `SMTP_*` |
+| OTP/email | `LOGIN_OTP_ENABLED`, `OTP_EMAIL_PROVIDER`, `BREVO_API_*`, `SMTP_*` |
 | Demo data | `DEMO_SEED_*`, selected `DEMO_*_EMAIL` overrides |
 | Recognition | `FACE_RECOGNITION_PROVIDER`, model paths/hashes and bounds |
 
@@ -262,7 +262,23 @@ LOGIN_OTP_ENABLED=true
 OTP_EMAIL_PROVIDER=development_log
 ```
 
-`development_log` is forbidden in production. Production email requires:
+`development_log` is forbidden in production. For Render Free and other hosts
+that restrict outbound SMTP, use Brevo's HTTPS transactional-email API:
+
+```env
+LOGIN_OTP_ENABLED=true
+OTP_EMAIL_PROVIDER=brevo_api
+BREVO_API_KEY=<secret>
+BREVO_API_TIMEOUT_SECONDS=20
+SMTP_FROM_EMAIL=<verified Brevo sender>
+```
+
+The API key must be stored only in the hosting environment. The configured
+sender must already be verified in Brevo. The application sends to Brevo's
+fixed HTTPS endpoint on port 443, does not follow redirects, and does not retry
+failed sends automatically.
+
+SMTP remains supported where outbound SMTP is available:
 
 ```env
 OTP_EMAIL_PROVIDER=smtp
@@ -274,8 +290,9 @@ SMTP_USE_SSL=false
 ```
 
 Set `SMTP_USERNAME` and `SMTP_PASSWORD` together when the provider requires
-authentication. Real SMTP credentials belong only in the hosting environment.
-The project does not create or configure an email-provider account.
+authentication. Real provider credentials belong only in the hosting
+environment. The project does not create or configure an email-provider
+account.
 
 ## API summary
 

@@ -310,6 +310,41 @@ def test_otp_smtp_transport_modes_are_mutually_exclusive() -> None:
         )
 
 
+def test_otp_brevo_api_accepts_required_configuration_and_hides_key() -> None:
+    api_key = "brevo-test-key-not-a-real-secret"
+    settings = Settings(
+        **_BASE_KWARGS,
+        LOGIN_OTP_ENABLED=True,
+        OTP_EMAIL_PROVIDER="brevo_api",
+        BREVO_API_KEY=api_key,
+        SMTP_FROM_EMAIL="verified-sender@example.com",
+    )
+
+    assert settings.OTP_EMAIL_PROVIDER == "brevo_api"
+    assert settings.BREVO_API_TIMEOUT_SECONDS == 20
+    assert api_key not in repr(settings)
+
+
+def test_otp_brevo_api_requires_api_key() -> None:
+    with pytest.raises(ValidationError, match="BREVO_API_KEY"):
+        Settings(
+            **_BASE_KWARGS,
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="brevo_api",
+            SMTP_FROM_EMAIL="verified-sender@example.com",
+        )
+
+
+def test_otp_brevo_api_requires_sender_email() -> None:
+    with pytest.raises(ValidationError, match="SMTP_FROM_EMAIL"):
+        Settings(
+            **_BASE_KWARGS,
+            LOGIN_OTP_ENABLED=True,
+            OTP_EMAIL_PROVIDER="brevo_api",
+            BREVO_API_KEY="brevo-test-key-not-a-real-secret",
+        )
+
+
 def test_production_otp_smtp_rejects_plaintext_transport() -> None:
     with pytest.raises(ValidationError):
         Settings(
@@ -334,6 +369,7 @@ def test_production_otp_smtp_rejects_plaintext_transport() -> None:
         ("LOGIN_OTP_TTL_SECONDS", 901),
         ("LOGIN_OTP_MAX_ATTEMPTS", 0),
         ("LOGIN_OTP_RESEND_COOLDOWN_SECONDS", 29),
+        ("BREVO_API_TIMEOUT_SECONDS", 61),
         ("SMTP_TIMEOUT_SECONDS", 61),
     ],
 )

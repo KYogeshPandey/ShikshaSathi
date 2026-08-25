@@ -179,7 +179,9 @@ class Settings(BaseSettings):
     PASSWORD_RESET_REQUEST_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
     PASSWORD_RESET_CONFIRM_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=50)
     PASSWORD_RESET_CONFIRM_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=3600)
-    OTP_EMAIL_PROVIDER: Literal["none", "smtp", "development_log"] = "none"
+    OTP_EMAIL_PROVIDER: Literal["none", "smtp", "brevo_api", "development_log"] = "none"
+    BREVO_API_KEY: str | None = Field(default=None, repr=False)
+    BREVO_API_TIMEOUT_SECONDS: int = Field(default=20, ge=1, le=60)
     SMTP_HOST: str | None = None
     SMTP_PORT: int = Field(default=587, ge=1, le=65535)
     SMTP_USERNAME: str | None = None
@@ -689,6 +691,15 @@ class Settings(BaseSettings):
                 self.SMTP_STARTTLS or self.SMTP_USE_SSL
             ):
                 raise ValueError("Production OTP SMTP delivery requires TLS.")
+        if self.OTP_EMAIL_PROVIDER == "brevo_api":
+            if not self.BREVO_API_KEY or not self.BREVO_API_KEY.strip():
+                raise ValueError(
+                    "BREVO_API_KEY is required when OTP Brevo API delivery is enabled."
+                )
+            if self.SMTP_FROM_EMAIL is None:
+                raise ValueError(
+                    "SMTP_FROM_EMAIL is required when OTP Brevo API delivery is enabled."
+                )
         return self
 
 
