@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.modules.auth.email import OtpEmailSender
 from app.modules.auth.errors import (
+    DemoStudentLoginUnavailableError,
     ExpiredOtpChallengeError,
     InvalidCredentialsError,
     InvalidNewPasswordError,
@@ -49,7 +50,9 @@ from app.modules.auth.security import (
     verify_password_reset_otp,
     verify_password_timing_safe_dummy,
 )
-from app.modules.users.models import User
+from app.modules.profiles.repository import StudentProfileRepository
+from app.modules.users.models import User, UserRole
+from app.modules.users.normalization import normalize_email
 from app.modules.users.repository import UserRepository
 
 logger = structlog.get_logger(__name__)
@@ -100,8 +103,28 @@ class AuthService:
         self._session = session
         self._settings = settings
         self._users = UserRepository(session)
+        self._student_profiles = StudentProfileRepository(session)
         self._refresh_sessions = RefreshSessionRepository(session)
         self._otp_challenges = OtpChallengeRepository(session)
+
+    async def login_demo_student(self) -> AuthResult:
+        """Issue the normal session pair for one configured, valid Student account."""
+        configured_email = self._settings.DEMO_STUDENT_LOGIN_EMAIL
+        if not self._settings.DEMO_STUDENT_LOGIN_ENABLED or configured_email is None:
+            raise DemoStudentLoginUnavailableError()
+
+        user = await self._users.get_by_email(normalize_email(str(configured_email)))
+        if user is None or not user.is_active or user.role is not UserRole.STUDENT:
+            raise DemoStudentLoginUnavailableError()
+
+        profile = await self._student_profiles.get_by_user_id(user.id)
+        if profile is None or not profile.is_active:
+            raise DemoStudentLoginUnavailableError()
+
+        result = await self._issue_token_pair(user)
+        await self._session.commit()
+        logger.info("demo_student_login_succeeded", user_id=str(user.id))
+        return result
 
     async def login(self, *, email: str, password: str) -> AuthResult:
         """Authenticate by email/password and issue a new token pair.

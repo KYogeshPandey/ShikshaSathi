@@ -69,6 +69,16 @@ class ClassroomAttendanceAggregate:
 
 
 @dataclass(frozen=True)
+class SubjectAttendanceAggregate:
+    """One subject's attendance counts for a single student."""
+
+    subject_id: uuid.UUID
+    total_count: int
+    present_count: int
+    absent_count: int
+
+
+@dataclass(frozen=True)
 class AttendanceExportRow:
     """One CSV-export row's attendance-side data.
 
@@ -324,6 +334,43 @@ class AttendanceRepository:
         return [
             StudentAttendanceAggregate(
                 student_profile_id=row.student_profile_id,
+                total_count=int(row.total),
+                present_count=int(row.present_count),
+                absent_count=int(row.absent_count),
+            )
+            for row in rows
+        ]
+
+    async def aggregate_by_subject(
+        self,
+        *,
+        classroom_id: uuid.UUID,
+        student_profile_id: uuid.UUID,
+    ) -> builtins.list[SubjectAttendanceAggregate]:
+        """Per-subject counts for one student in one classroom, in one query."""
+        stmt = (
+            select(
+                AttendanceRecord.subject_id,
+                func.count().label("total"),
+                func.count()
+                .filter(AttendanceRecord.status == AttendanceStatus.PRESENT)
+                .label("present_count"),
+                func.count()
+                .filter(AttendanceRecord.status == AttendanceStatus.ABSENT)
+                .label("absent_count"),
+            )
+            .select_from(AttendanceRecord)
+            .where(
+                AttendanceRecord.classroom_id == classroom_id,
+                AttendanceRecord.student_profile_id == student_profile_id,
+            )
+            .group_by(AttendanceRecord.subject_id)
+            .order_by(AttendanceRecord.subject_id)
+        )
+        rows = (await self._session.execute(stmt)).all()
+        return [
+            SubjectAttendanceAggregate(
+                subject_id=row.subject_id,
                 total_count=int(row.total),
                 present_count=int(row.present_count),
                 absent_count=int(row.absent_count),

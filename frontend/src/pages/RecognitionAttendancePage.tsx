@@ -286,10 +286,10 @@ export function RecognitionAttendancePage() {
               {roster.data.map((student) => (
                 <div className="attendance-row" key={student.student_profile_id}>
                   <div>
-                    <strong>Roll {student.roll_number ?? "not assigned"}</strong>
-                    <small>{student.student_profile_id}</small>
+                    <strong>{student.full_name}</strong>
+                    <small>Roll {student.roll_number ?? "not assigned"}</small>
                   </div>
-                  <div className="segmented" role="group" aria-label={`Attendance for roll ${student.roll_number ?? student.student_profile_id}`}>
+                  <div className="segmented" role="group" aria-label={`Attendance for ${student.full_name}, roll ${student.roll_number ?? "not assigned"}`}>
                     {(["", "present", "absent"] as const).map((status) => (
                       <button
                         aria-pressed={statusFor(student.student_profile_id) === status}

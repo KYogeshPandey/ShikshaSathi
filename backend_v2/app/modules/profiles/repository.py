@@ -10,6 +10,7 @@ not (and cannot cleanly be) a single-table database CHECK constraint.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -30,6 +31,14 @@ _TEACHER_PROFILE_USER_CONSTRAINT = "uq_teacher_profiles_user_id"
 _TEACHER_PROFILE_EMPLOYEE_CODE_CONSTRAINT = "uq_teacher_profiles_employee_code"
 _STUDENT_PROFILE_USER_CONSTRAINT = "uq_student_profiles_user_id"
 _STUDENT_PROFILE_CLASSROOM_ROLL_CONSTRAINT = "uq_student_profiles_classroom_roll"
+
+
+@dataclass(frozen=True)
+class StudentProfileIdentity:
+    """A profile paired with its existing user-owned display name."""
+
+    profile: StudentProfile
+    full_name: str
 
 
 def _matches_constraint(exc: IntegrityError, constraint_name: str) -> bool:
@@ -148,6 +157,21 @@ class StudentProfileRepository:
         stmt = select(StudentProfile).where(StudentProfile.classroom_id == classroom_id)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_identities_by_classroom(
+        self, classroom_id: uuid.UUID
+    ) -> list[StudentProfileIdentity]:
+        """Return classroom profiles with names sourced from ``User.full_name``."""
+        stmt = (
+            select(StudentProfile, User.full_name)
+            .join(User, User.id == StudentProfile.user_id)
+            .where(StudentProfile.classroom_id == classroom_id)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            StudentProfileIdentity(profile=profile, full_name=full_name)
+            for profile, full_name in result.tuples().all()
+        ]
 
     async def list(
         self, *, include_inactive: bool = False, limit: int = 50, offset: int = 0

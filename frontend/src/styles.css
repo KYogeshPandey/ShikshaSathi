@@ -578,6 +578,50 @@ textarea:focus-visible {
   border-color: var(--slate);
 }
 
+.classroom-selector {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.classroom-selector legend {
+  margin-bottom: 0.55rem;
+  color: #344054;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.65rem;
+}
+
+.checkbox-option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.checkbox-option:focus-within {
+  outline: 3px solid rgba(59, 110, 143, 0.16);
+  border-color: var(--slate);
+}
+
+.checkbox-option input {
+  width: 1rem;
+  min-height: 1rem;
+  flex: 0 0 auto;
+  accent-color: var(--teal-dark);
+}
+
 .button-row,
 .table-actions,
 .pagination {
@@ -762,6 +806,20 @@ tbody tr:hover {
   background: #fbfdfc;
 }
 
+.action-card:focus-visible {
+  outline: 3px solid rgba(59, 110, 143, 0.2);
+  outline-offset: 2px;
+}
+
+.student-quick-actions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
+.action-card--featured {
+  border-color: #bdd7d4;
+  background: linear-gradient(145deg, #ffffff, var(--soft-teal));
+}
+
 .action-card strong,
 .metric-card strong {
   color: var(--navy);
@@ -786,6 +844,120 @@ tbody tr:hover {
 
 .metric-grid--compact {
   grid-template-columns: minmax(0, 18rem);
+}
+
+.table-secondary {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.planner-card {
+  display: grid;
+  gap: 1.25rem;
+  border-color: #b9d6d2;
+  background: linear-gradient(145deg, #ffffff, #f5fbfa);
+}
+
+.planner-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.planner-card__heading h2,
+.planner-card__heading p {
+  margin-bottom: 0;
+}
+
+.planner-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: var(--secondary-background);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.planner-status--safe,
+.planner-status--recovery_possible {
+  background: #e8f5f1;
+  color: var(--success);
+}
+
+.planner-status--near_target,
+.planner-status--tight_recovery {
+  background: #fff5dc;
+  color: #8a5a00;
+}
+
+.planner-status--recovery_needed,
+.planner-status--not_reachable {
+  background: #fff0ee;
+  color: var(--error);
+}
+
+.planner-result {
+  padding: 1.15rem;
+  border: 1px solid #c9dfdc;
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.planner-result__message {
+  margin-bottom: 1rem;
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
+.planner-result__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.planner-result__grid > div {
+  padding: 0.75rem;
+  border-radius: 0.55rem;
+  background: var(--secondary-background);
+}
+
+.planner-result__grid dt {
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.planner-result__grid dd {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1.1rem;
+  font-weight: 750;
+}
+
+.planner-buffer-note,
+.planner-assumption {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.planner-buffer-note {
+  margin: 1rem 0 0.35rem;
+}
+
+.planner-assumption {
+  margin: 0;
 }
 
 .analytics-panel {
@@ -1079,6 +1251,36 @@ tbody tr:hover {
 .status-pill--absent {
   background: #fff4f3;
   color: var(--error);
+}
+
+.status-pill--neutral {
+  background: var(--secondary-background);
+  color: var(--muted);
+}
+
+.field small {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.onboarding-unmatched {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid #e3b9b9;
+  border-radius: 0.55rem;
+  background: #fff4f3;
+}
+
+.onboarding-unmatched h3 {
+  margin-bottom: 0.55rem;
+  color: var(--error);
+  font-size: 1rem;
+}
+
+.onboarding-unmatched ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .page-stack {

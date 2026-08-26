@@ -81,6 +81,10 @@ def create_app() -> FastAPI:
                 settings.LOGIN_RATE_LIMIT_ATTEMPTS,
                 settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
             ),
+            f"{auth_prefix}/demo-student": (
+                settings.LOGIN_RATE_LIMIT_ATTEMPTS,
+                settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+            ),
             f"{auth_prefix}/otp/verify": (
                 settings.OTP_VERIFY_RATE_LIMIT_ATTEMPTS,
                 settings.OTP_VERIFY_RATE_LIMIT_WINDOW_SECONDS,

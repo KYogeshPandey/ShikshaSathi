@@ -66,6 +66,29 @@ class ManifestRow:
     zip_info: zipfile.ZipInfo
 
 
+@dataclass(frozen=True)
+class PhotoArchiveMember:
+    """One safe photo member discovered for manifest-free onboarding."""
+
+    filename: str
+    zip_info: zipfile.ZipInfo
+
+
+@dataclass(frozen=True)
+class PhotoArchiveFileProblem:
+    """A file-local rejection which need not reject every onboarding row."""
+
+    filename: str
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class PhotoArchiveInspection:
+    members: tuple[PhotoArchiveMember, ...]
+    problems: tuple[PhotoArchiveFileProblem, ...]
+
+
 def _error(errors: list[dict[str, object]], *, code: str, message: str, **extra: object) -> None:
     errors.append({"code": code, "message": message, **extra})
 
@@ -265,6 +288,140 @@ def validate_archive(zip_path: Path, *, settings: Settings) -> list[ManifestRow]
             raise BulkEnrollmentValidationError(errors)
 
         return sorted(rows, key=lambda row: row.row_number)
+    finally:
+        zf.close()
+
+
+def validate_photo_archive(zip_path: Path, *, settings: Settings) -> PhotoArchiveInspection:
+    """Validate a manifest-free onboarding archive without weakening ZIP safety.
+
+    Unsafe paths, duplicate archive paths, encryption, symlinks, suspicious
+    compression ratios, nested archives, and archive-wide count/size limits
+    reject the whole archive. Unsupported, empty, or individually oversized
+    files are returned as file-local problems so one bad photo does not erase
+    successful student-profile imports or prevent other photos being enrolled.
+    """
+    try:
+        zf = zipfile.ZipFile(zip_path)
+    except zipfile.BadZipFile as exc:
+        raise BulkEnrollmentZipInvalidError(str(type(exc).__name__)) from exc
+
+    archive_errors: list[dict[str, object]] = []
+    members: list[PhotoArchiveMember] = []
+    problems: list[PhotoArchiveFileProblem] = []
+    try:
+        infolist = zf.infolist()
+        if not infolist:
+            raise BulkEnrollmentZipInvalidError("empty_archive")
+
+        seen_names: set[str] = set()
+        candidate_file_count = 0
+        total_uncompressed = 0
+
+        for info in infolist:
+            name = info.filename
+            if _is_directory_entry(info):
+                continue
+
+            path_error = _validate_member_path(name)
+            if path_error is not None:
+                _error(
+                    archive_errors,
+                    code=path_error,
+                    message=f"Unsafe path in archive: {name!r}",
+                )
+                continue
+            if name in seen_names:
+                _error(
+                    archive_errors,
+                    code="ZIP_MEMBER_DUPLICATE_PATH",
+                    message=f"Duplicate archive path: {name!r}",
+                )
+                continue
+            seen_names.add(name)
+            candidate_file_count += 1
+
+            if info.flag_bits & 0x1:
+                _error(
+                    archive_errors,
+                    code="ZIP_MEMBER_ENCRYPTED",
+                    message=f"Encrypted archive member not allowed: {name!r}",
+                )
+                continue
+            if _is_symlink_entry(info):
+                _error(
+                    archive_errors,
+                    code="ZIP_MEMBER_SYMLINK",
+                    message=f"Symlink archive member not allowed: {name!r}",
+                )
+                continue
+
+            total_uncompressed += max(info.file_size, 0)
+            if _compression_ratio(info) > settings.MAX_BULK_ENROLLMENT_COMPRESSION_RATIO:
+                _error(
+                    archive_errors,
+                    code="ZIP_MEMBER_SUSPICIOUS_COMPRESSION_RATIO",
+                    message=f"Suspicious compression ratio for {name!r}.",
+                )
+                continue
+
+            lowered = name.lower()
+            if any(lowered.endswith(ext) for ext in _NESTED_ARCHIVE_EXTENSIONS):
+                _error(
+                    archive_errors,
+                    code="ZIP_MEMBER_NESTED_ARCHIVE",
+                    message=f"Nested archive member not allowed: {name!r}",
+                )
+                continue
+            if not any(lowered.endswith(ext) for ext in _ALLOWED_MEMBER_EXTENSIONS):
+                problems.append(
+                    PhotoArchiveFileProblem(
+                        filename=name,
+                        code="ZIP_MEMBER_UNSUPPORTED_EXTENSION",
+                        message=f"Unsupported file extension: {name!r}",
+                    )
+                )
+                continue
+            if info.file_size <= 0:
+                problems.append(
+                    PhotoArchiveFileProblem(
+                        filename=name,
+                        code="ZIP_MEMBER_EMPTY",
+                        message=f"Archive member is empty: {name!r}",
+                    )
+                )
+                continue
+            if info.file_size > settings.MAX_ENROLLMENT_IMAGE_BYTES:
+                problems.append(
+                    PhotoArchiveFileProblem(
+                        filename=name,
+                        code="ZIP_MEMBER_TOO_LARGE",
+                        message=f"Archive member exceeds the per-file byte limit: {name!r}",
+                    )
+                )
+                continue
+
+            members.append(PhotoArchiveMember(filename=name, zip_info=info))
+
+        if candidate_file_count > settings.MAX_BULK_ENROLLMENT_FILES:
+            _error(
+                archive_errors,
+                code="ZIP_TOO_MANY_FILES",
+                message=(
+                    f"Archive contains {candidate_file_count} files, exceeding the "
+                    f"{settings.MAX_BULK_ENROLLMENT_FILES}-file limit."
+                ),
+            )
+        if total_uncompressed > settings.MAX_BULK_ENROLLMENT_TOTAL_UNCOMPRESSED_BYTES:
+            _error(
+                archive_errors,
+                code="ZIP_TOTAL_UNCOMPRESSED_TOO_LARGE",
+                message="Archive's total uncompressed size exceeds the configured limit.",
+            )
+        if archive_errors:
+            raise BulkEnrollmentValidationError(archive_errors)
+
+        return PhotoArchiveInspection(members=tuple(members), problems=tuple(problems))
     finally:
         zf.close()
 

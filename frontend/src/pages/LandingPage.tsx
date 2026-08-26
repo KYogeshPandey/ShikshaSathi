@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/authContext";
 import "./landing-page.css";
 
 type IconName =
@@ -55,7 +57,44 @@ function Icon({
   return <svg {...common}>{paths[name]}</svg>;
 }
 
+function StudentDemoButton({ variant }: { variant: "primary" | "secondary" }) {
+  const { loginDemoStudent } = useAuth();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const openDemo = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await loginDemoStudent();
+      navigate("/student", { replace: true });
+    } catch {
+      setError("Student demo is temporarily unavailable.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="ss-demo-button-group">
+      <button
+        className={`ss-button ss-button-${variant}`}
+        disabled={isLoading}
+        onClick={openDemo}
+        type="button"
+      >
+        {isLoading ? "Opening Student Demo…" : "Explore Student Demo"}
+        {!isLoading ? <Icon name="arrow" size={17} /> : null}
+      </button>
+      {error ? <p className="ss-demo-error" role="alert">{error}</p> : null}
+    </div>
+  );
+}
+
 const navItems = [
+  ["Demo", "demo"],
   ["Features", "features"],
   ["Roles", "roles"],
   ["Attendance", "attendance"],
@@ -84,23 +123,72 @@ const features = [
 const roles = [
   {
     label: "Administrator",
-    title: "Run the school with confidence.",
-    text: "Manage academics, people, schedules, announcements, imports, and reports from a structured command centre.",
+    title: "Prepare every classroom.",
+    text: "Bring student records and enrollment material into one reviewed onboarding workflow.",
+    points: [
+      "Bulk student onboarding",
+      "CSV/XLSX with optional photo ZIP",
+      "Automatic photo matching and biometric enrollment status",
+    ],
     icon: "clipboard" as const,
   },
   {
     label: "Teacher",
-    title: "Keep classroom work moving.",
-    text: "See assigned classrooms, follow the timetable, record attendance, and access relevant student records.",
+    title: "Review attendance with confidence.",
+    text: "Move from classroom evidence to confirmed attendance without removing teacher oversight.",
+    points: [
+      "Group-photo face recognition",
+      "Human review before confirmation",
+      "Manual attendance, reports, and exports",
+    ],
     icon: "book" as const,
   },
   {
     label: "Student",
-    title: "Make the school day visible.",
-    text: "View attendance, schedules, announcements, and a personal academic view without the noise.",
+    title: "Turn attendance into a clear plan.",
+    text: "Give each student a focused view of their own schedule, attendance, and recovery options.",
+    points: [
+      "Overall and subject-wise attendance",
+      "Timetable and announcements",
+      "Attendance Recovery Planner",
+    ],
     icon: "graduation" as const,
   },
 ];
+
+const demoHighlights = [
+  "Class-wise student onboarding",
+  "Reviewed face-recognition attendance",
+  "Human-in-the-loop confirmation",
+  "Student Attendance Recovery Planner",
+];
+
+const workflowSteps = [
+  { title: "Student Onboarding", text: "Import a class roster from XLSX or CSV and optionally match enrollment photos by roll number.", icon: "users" as const },
+  { title: "Teacher Capture", text: "Capture or upload a classroom image from the teacher attendance workspace.", icon: "calendar" as const },
+  { title: "AI Recognition", text: "Process multiple faces into found, ambiguous, and unknown confidence decisions.", icon: "chart" as const },
+  { title: "Human Review", text: "Keep the teacher in control of every proposed present, absent, or unmarked result.", icon: "check" as const },
+  { title: "Reports & Student Insight", text: "Persist confirmed attendance, export reports, and guide student recovery planning.", icon: "download" as const },
+];
+
+const securityPoints = [
+  "Role-Based Access Control",
+  "Secure JWT and refresh-session authentication",
+  "Human-reviewed biometric attendance",
+  "Audit-aware attendance workflows",
+  "Environment-based secret configuration",
+];
+
+const technologies = [
+  ["React", "R"],
+  ["TypeScript", "TS"],
+  ["FastAPI", "FA"],
+  ["PostgreSQL", "PG"],
+  ["Docker", "D"],
+  ["Vercel", "V"],
+  ["Render", "R"],
+  ["Neon", "N"],
+] as const;
 
 function Logo() {
   return (
@@ -252,20 +340,21 @@ export function LandingPage() {
       <main>
       <section className="ss-container ss-hero">
         <div className="ss-hero-copy">
-          <p className="ss-eyebrow">School administration, made practical</p>
+          <p className="ss-eyebrow">Smart school operations and attendance intelligence</p>
           <h1>One workspace for smarter school operations.</h1>
           <p className="ss-lead">
-            Manage academics, attendance, schedules, communication, and
-            reporting from one secure role-based platform.
+            Connect student onboarding, reviewed attendance, reporting, and
+            student recovery planning in one secure role-based platform.
           </p>
 
           <div className="ss-hero-actions">
             <a href="/login" className="ss-button ss-button-primary">
-              Open ShikshaSathi <Icon name="arrow" size={17} />
+              Sign in <Icon name="arrow" size={17} />
             </a>
-            <a href="#features" className="ss-button ss-button-secondary">
-              Explore Features
+            <a href="#demo" className="ss-button ss-button-secondary">
+              Watch demo <span aria-hidden="true">↓</span>
             </a>
+            <StudentDemoButton variant="secondary" />
           </div>
 
           <div className="ss-proof">
@@ -281,6 +370,47 @@ export function LandingPage() {
         </div>
 
         <DashboardPreview />
+      </section>
+
+      <section id="demo" className="ss-section ss-demo-section" aria-labelledby="demo-title">
+        <div className="ss-container ss-demo-layout">
+          <div className="ss-demo-copy">
+            <p className="ss-eyebrow">Product walkthrough</p>
+            <h2 id="demo-title">See ShikshaSathi in action.</h2>
+            <p>
+              Watch the complete Admin → Teacher → Student workflow, from class-wise
+              onboarding to reviewed attendance and student recovery planning.
+            </p>
+            <ul className="ss-demo-highlights">
+              {demoHighlights.map((highlight) => (
+                <li key={highlight}><Icon name="check" size={17} />{highlight}</li>
+              ))}
+            </ul>
+            <StudentDemoButton variant="primary" />
+            <small>
+              Safe Student-role access only. The browser sends no account identifier
+              or password; Admin and Teacher workflows remain video-only.
+            </small>
+          </div>
+
+          <div className="ss-video-card">
+            <video
+              aria-describedby="demo-video-description"
+              aria-label="ShikshaSathi product demonstration"
+              controls
+              playsInline
+              preload="metadata"
+            >
+              <source src="/demo/shikshasathi-demo.mp4" type="video/mp4" />
+              Your browser does not support the ShikshaSathi demo video.
+            </video>
+            <p id="demo-video-description">
+              A concise walkthrough of student onboarding, teacher-reviewed
+              attendance, reporting, and the Student Attendance Recovery Planner.
+            </p>
+          </div>
+
+        </div>
       </section>
 
       <section className="ss-section ss-section-white">
@@ -311,11 +441,11 @@ export function LandingPage() {
       <section id="roles" className="ss-section">
         <div className="ss-container ss-role-layout">
           <div className="ss-section-intro">
-            <p className="ss-eyebrow">Role-based workspaces</p>
-            <h2>The right view for every person.</h2>
+            <p className="ss-eyebrow">Admin → Teacher → Student</p>
+            <h2>Three roles. One connected attendance story.</h2>
             <p>
-              Keep responsibilities clear while giving the whole school one
-              shared source of truth.
+              Each role gets the tools it needs while sensitive workflows remain
+              permission-scoped and teacher confirmation stays explicit.
             </p>
           </div>
 
@@ -329,6 +459,14 @@ export function LandingPage() {
                   <p className="ss-role-label">{role.label}</p>
                   <h3>{role.title}</h3>
                   <p>{role.text}</p>
+                  <ul>
+                    {role.points.map((point) => (
+                      <li key={point}>
+                        <Icon name="check" size={15} />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </article>
             ))}
@@ -340,23 +478,24 @@ export function LandingPage() {
         <div className="ss-container">
           <div className="ss-section-intro">
             <p className="ss-eyebrow">Attendance workflow</p>
-            <h2>From classroom activity to a report you can trust.</h2>
+            <h2>From student onboarding to insight you can act on.</h2>
+            <p>
+              A connected, review-first flow keeps automation useful and the
+              teacher accountable for the final attendance record.
+            </p>
           </div>
 
           <div className="ss-workflow">
-            {["Classroom", "Teacher", "Attendance", "Validation", "Reports"].map(
-              (item, index) => (
-                <div className="ss-workflow-step" key={item}>
-                  <div className="ss-workflow-card">
-                    <span>{index + 1}</span>
-                    <strong>{item}</strong>
-                  </div>
-                  {index < 4 && (
-                    <Icon name="arrow" size={18} className="ss-workflow-arrow" />
-                  )}
+            {workflowSteps.map((step, index) => (
+              <article className="ss-workflow-card" key={step.title}>
+                <div className="ss-workflow-card__top">
+                  <span className="ss-workflow-number">0{index + 1}</span>
+                  <span className="ss-icon-box ss-icon-box-soft"><Icon name={step.icon} /></span>
                 </div>
-              ),
-            )}
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -447,28 +586,32 @@ export function LandingPage() {
       </section>
 
       <section id="technology" className="ss-section">
-        <div className="ss-container ss-tech-layout">
-          <div className="ss-section-intro">
-            <p className="ss-eyebrow">Security and technology</p>
-            <h2>A dependable foundation for school data.</h2>
-          </div>
-
-          <div className="ss-tech-grid">
-            <article className="ss-tech-card">
-              <Icon name="shield" size={26} />
-              <h3>Thoughtful by design</h3>
-              <p>
-                Role-Based Access Control, JWT authentication, audit-aware
-                attendance workflows, and secure environment configuration.
-              </p>
-            </article>
-            <article className="ss-tech-card">
-              <p className="ss-tech-label">Technology</p>
-              <p>
-                React · TypeScript · FastAPI · PostgreSQL · Docker · Vercel ·
-                Render · Neon
-              </p>
-            </article>
+        <div className="ss-container ss-security-layout">
+          <article className="ss-security-card">
+            <span className="ss-security-icon"><Icon name="shield" size={30} /></span>
+            <div>
+              <p className="ss-eyebrow">Security by design</p>
+              <h2>A dependable foundation for school data.</h2>
+              <ul>
+                {securityPoints.map((point) => (
+                  <li key={point}><Icon name="check" size={16} />{point}</li>
+                ))}
+              </ul>
+            </div>
+          </article>
+          <div className="ss-built-with" aria-labelledby="built-with-title">
+            <div>
+              <p className="ss-eyebrow">Technology</p>
+              <h3 id="built-with-title">Built with</h3>
+            </div>
+            <div className="ss-technology-grid">
+              {technologies.map(([name, mark]) => (
+                <div className="ss-technology-chip" key={name}>
+                  <span aria-hidden="true">{mark}</span>
+                  <strong>{name}</strong>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>

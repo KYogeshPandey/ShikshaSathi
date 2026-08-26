@@ -8,7 +8,7 @@ import { ManualAttendancePage } from "./ManualAttendancePage";
 const ids = {
   classroom: "00000000-0000-4000-8000-000000000001",
   subject: "00000000-0000-4000-8000-000000000002",
-  student: "00000000-0000-4000-8000-000000000003",
+  student: "2f87849f-52a6-4aac-b417-167e9f2c88ba",
 };
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +31,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.listClassrooms.mockResolvedValue({ items: [{ id: ids.classroom, name: "Grade 7", code: "G7" }], total: 1, limit: 100, offset: 0 });
   mocks.listSubjects.mockResolvedValue({ items: [{ id: ids.subject, name: "Math", code: "MATH" }], total: 1, limit: 100, offset: 0 });
-  mocks.getRoster.mockResolvedValue([{ student_profile_id: ids.student, roll_number: "7" }]);
+  mocks.getRoster.mockResolvedValue([
+    { student_profile_id: ids.student, full_name: "Yogesh Pandey", roll_number: "101" },
+  ]);
   mocks.getDaily.mockResolvedValue({ records: [], classroom_id: ids.classroom, subject_id: ids.subject, attendance_date: "2026-08-16" });
   mocks.saveBulk.mockResolvedValue({ total_count: 1, created_count: 1, updated_count: 0, record_ids: ["record-id"] });
 });
@@ -43,7 +45,9 @@ async function loadRoster() {
   await user.selectOptions(screen.getByLabelText("Classroom"), ids.classroom);
   await user.selectOptions(screen.getByLabelText("Subject"), ids.subject);
   await user.click(screen.getByRole("button", { name: "Load roster" }));
-  expect(await screen.findByText("Roll 7")).toBeVisible();
+  expect(await screen.findByText("Yogesh Pandey")).toBeVisible();
+  expect(screen.getByText("Roll 101")).toBeVisible();
+  expect(screen.queryByText(ids.student)).not.toBeInTheDocument();
   return user;
 }
 

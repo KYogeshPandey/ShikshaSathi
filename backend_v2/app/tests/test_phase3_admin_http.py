@@ -11,6 +11,35 @@ from app.modules.users.models import UserRole
 from app.tests.phase3_http_helpers import auth_headers, create_resource, seed_user
 
 
+async def test_admin_user_directory_is_role_filtered_and_never_exposes_credentials(
+    client_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    admin = await seed_user(db_session, email="directory-admin@example.com", role=UserRole.ADMIN)
+    teacher = await seed_user(
+        db_session, email="directory-teacher@example.com", role=UserRole.TEACHER
+    )
+    await seed_user(db_session, email="directory-student@example.com", role=UserRole.STUDENT)
+
+    response = await client_db.get(
+        "/api/v1/users?role=teacher&include_inactive=true",
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    item = response.json()["items"][0]
+    assert item["id"] == str(teacher.id)
+    assert item["full_name"] == "Teacher HTTP Test"
+    assert item["email"] == "directory-teacher@example.com"
+    assert "password" not in item
+    assert "password_hash" not in item
+    denied = await client_db.get(
+        "/api/v1/users?role=student",
+        headers=auth_headers(teacher),
+    )
+    assert denied.status_code == 403
+
+
 async def test_authentication_role_denial_and_request_id_envelope(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:

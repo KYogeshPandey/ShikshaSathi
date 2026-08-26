@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.attendance.models import AttendanceRecord, AttendanceStatus
 from app.modules.profiles.models import StudentProfile
+from app.modules.users.models import User
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class ReportDetailRow:
     attendance_date: date
     student_profile_id: uuid.UUID
     roll_number: str | None
+    full_name: str
     status: AttendanceStatus
     remarks: str | None
 
@@ -30,6 +32,7 @@ class ReportDetailRow:
 class RosterAttendanceAggregate:
     student_profile_id: uuid.UUID
     roll_number: str | None
+    full_name: str
     total_count: int
     present_count: int
     absent_count: int
@@ -99,11 +102,13 @@ class ReportsRepository:
                 AttendanceRecord.attendance_date,
                 AttendanceRecord.student_profile_id,
                 StudentProfile.roll_number,
+                User.full_name,
                 AttendanceRecord.status,
                 AttendanceRecord.remarks,
             )
             .select_from(AttendanceRecord)
             .join(StudentProfile, StudentProfile.id == AttendanceRecord.student_profile_id)
+            .join(User, User.id == StudentProfile.user_id)
             .where(
                 AttendanceRecord.classroom_id == classroom_id,
                 AttendanceRecord.subject_id == subject_id,
@@ -127,6 +132,7 @@ class ReportsRepository:
                 attendance_date=row.attendance_date,
                 student_profile_id=row.student_profile_id,
                 roll_number=row.roll_number,
+                full_name=row.full_name,
                 status=row.status,
                 remarks=row.remarks,
             )
@@ -153,6 +159,7 @@ class ReportsRepository:
             select(
                 StudentProfile.id.label("student_profile_id"),
                 StudentProfile.roll_number,
+                User.full_name,
                 func.count(AttendanceRecord.id).label("total"),
                 func.count(AttendanceRecord.id)
                 .filter(AttendanceRecord.status == AttendanceStatus.PRESENT)
@@ -162,12 +169,13 @@ class ReportsRepository:
                 .label("absent_count"),
             )
             .select_from(StudentProfile)
+            .join(User, User.id == StudentProfile.user_id)
             .outerjoin(AttendanceRecord, attendance_scope)
             .where(
                 StudentProfile.classroom_id == classroom_id,
                 StudentProfile.is_active.is_(True),
             )
-            .group_by(StudentProfile.id, StudentProfile.roll_number)
+            .group_by(StudentProfile.id, StudentProfile.roll_number, User.full_name)
             .order_by(
                 StudentProfile.roll_number.asc().nulls_last(),
                 StudentProfile.id,
@@ -179,6 +187,7 @@ class ReportsRepository:
             RosterAttendanceAggregate(
                 student_profile_id=row.student_profile_id,
                 roll_number=row.roll_number,
+                full_name=row.full_name,
                 total_count=int(row.total),
                 present_count=int(row.present_count),
                 absent_count=int(row.absent_count),

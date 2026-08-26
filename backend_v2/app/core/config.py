@@ -129,9 +129,9 @@ class Settings(BaseSettings):
         default_factory=lambda: ["localhost", "127.0.0.1", "testserver"]
     )
 
-    # Only POST /auth/login is counted. The production image runs one Uvicorn
-    # worker, so this process-local fixed-window limiter is authoritative for
-    # the shipped Compose topology.
+    # Public login entry points are counted. The production image runs one
+    # Uvicorn worker, so this process-local fixed-window limiter is
+    # authoritative for the shipped Compose topology.
     LOGIN_RATE_LIMIT_ATTEMPTS: int = Field(default=5, ge=1, le=1000)
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1, le=3600)
 
@@ -162,6 +162,13 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_COOKIE_SECURE: bool = True
     REFRESH_TOKEN_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     REFRESH_TOKEN_COOKIE_DOMAIN: str | None = None
+
+    # --- Optional public Student demo login ----------------------------------
+    # Disabled by default. When deliberately enabled, the API resolves exactly
+    # this configured identity server-side and still validates its active
+    # Student role/profile before issuing the normal token/session pair.
+    DEMO_STUDENT_LOGIN_ENABLED: bool = False
+    DEMO_STUDENT_LOGIN_EMAIL: EmailStr | None = None
 
     # --- Optional email OTP login (Milestone 4C) -----------------------------
     # Disabled by default, preserving the current production login until an
@@ -646,6 +653,11 @@ class Settings(BaseSettings):
     def _enforce_production_safety(self) -> Settings:
         if self.REFRESH_TOKEN_COOKIE_SAMESITE == "none" and not self.REFRESH_TOKEN_COOKIE_SECURE:
             raise ValueError("REFRESH_TOKEN_COOKIE_SAMESITE='none' requires Secure=true.")
+
+        if self.DEMO_STUDENT_LOGIN_ENABLED and self.DEMO_STUDENT_LOGIN_EMAIL is None:
+            raise ValueError(
+                "DEMO_STUDENT_LOGIN_EMAIL is required when DEMO_STUDENT_LOGIN_ENABLED=true."
+            )
 
         if self.APP_ENV is Environment.PRODUCTION:
             if self.DEBUG:

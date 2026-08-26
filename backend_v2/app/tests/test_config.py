@@ -41,6 +41,17 @@ def test_valid_testing_settings_load() -> None:
     assert settings.APP_ENV is Environment.TESTING
 
 
+def test_public_student_demo_login_defaults_to_disabled() -> None:
+    settings = Settings(**_BASE_KWARGS)
+    assert settings.DEMO_STUDENT_LOGIN_ENABLED is False
+    assert settings.DEMO_STUDENT_LOGIN_EMAIL is None
+
+
+def test_enabled_public_student_demo_requires_a_configured_email() -> None:
+    with pytest.raises(ValidationError, match="DEMO_STUDENT_LOGIN_EMAIL"):
+        Settings(**_BASE_KWARGS, DEMO_STUDENT_LOGIN_ENABLED=True)
+
+
 def test_missing_secret_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SECRET_KEY", raising=False)
     kwargs = {k: v for k, v in _BASE_KWARGS.items() if k != "SECRET_KEY"}

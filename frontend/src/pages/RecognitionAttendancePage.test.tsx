@@ -32,7 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.listClassrooms.mockResolvedValue({ items: [{ id: ids.classroom, name: "Grade 7", code: "G7" }], total: 1, limit: 100, offset: 0 });
   mocks.listSubjects.mockResolvedValue({ items: [{ id: ids.subject, name: "Math", code: "MATH" }], total: 1, limit: 100, offset: 0 });
-  mocks.getRoster.mockResolvedValue([{ student_profile_id: ids.student, roll_number: "7" }]);
+  mocks.getRoster.mockResolvedValue([
+    { student_profile_id: ids.student, full_name: "Yogesh Pandey", roll_number: "101" },
+  ]);
   mocks.confirmReview.mockResolvedValue({ review_id: "review-id", attendance_record_ids: ["record-id"], confirmed_records: [] });
 });
 
@@ -66,6 +68,9 @@ describe("recognition attendance", () => {
     expect(mocks.createReview).toHaveBeenCalledWith(expect.objectContaining({ classroomId: ids.classroom, subjectId: ids.subject, file: image }));
     expect(mocks.saveBulk).not.toHaveBeenCalled();
     expect(mocks.confirmReview).not.toHaveBeenCalled();
+    expect(screen.getByText("Yogesh Pandey")).toBeVisible();
+    expect(screen.getByText("Roll 101")).toBeVisible();
+    expect(screen.queryByText(ids.student)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Confirm reviewed attendance" }));
     await waitFor(() => expect(mocks.confirmReview).toHaveBeenCalledWith("review-found", [
@@ -84,7 +89,9 @@ describe("recognition attendance", () => {
     });
     await submitImage();
 
-    const attendanceGroup = await screen.findByRole("group", { name: "Attendance for roll 7" });
+    const attendanceGroup = await screen.findByRole("group", {
+      name: "Attendance for Yogesh Pandey, roll 101",
+    });
     expect(within(attendanceGroup).getByRole("button", { name: "unmarked" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Confirm reviewed attendance" })).toBeDisabled();
     await userEvent.click(within(attendanceGroup).getByRole("button", { name: "present" }));

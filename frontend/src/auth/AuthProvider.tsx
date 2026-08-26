@@ -58,6 +58,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [queryClient],
   );
 
+  const loginDemoStudent = useCallback(async (): Promise<AuthUser> => {
+    const demoUser = await authApi.loginDemoStudent();
+    queryClient.setQueryData<AuthUser | null>(authQueryKey, demoUser);
+    return demoUser;
+  }, [queryClient]);
+
   const resendOtp = useCallback(
     (challengeId: string): Promise<OtpChallengeInfo> => authApi.resendOtp(challengeId),
     [],
@@ -115,6 +121,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         status,
         user,
         login,
+        loginDemoStudent,
         verifyOtp,
         resendOtp,
         requestPasswordReset,

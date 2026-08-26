@@ -209,7 +209,7 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-intro" aria-labelledby="login-heading">
-        <a className="brand brand--inverse" href="/">
+        <a className="brand brand--inverse" href="/" aria-label="Back to ShikshaSathi home">
           <span className="brand-mark" aria-hidden="true">S</span>
           <span>ShikshaSathi</span>
         </a>
@@ -224,7 +224,7 @@ export function LoginPage() {
       </section>
 
       <section className="login-panel" aria-label="Sign in">
-        <a className="brand login-panel-brand" href="/">
+        <a className="brand login-panel-brand" href="/" aria-label="Back to ShikshaSathi home">
           <span className="brand-mark" aria-hidden="true">S</span>
           <span>ShikshaSathi</span>
         </a>

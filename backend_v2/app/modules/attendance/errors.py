@@ -164,3 +164,27 @@ class AttendanceStudentNotInClassroomError(AppError):
         super().__init__(
             "One or more students in this batch do not belong to the target classroom."
         )
+
+
+class AttendancePlannerInvalidDeadlineError(AppError):
+    code = "ATTENDANCE_PLANNER_INVALID_DEADLINE"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def __init__(self) -> None:
+        super().__init__("Plan until must be between today and 366 days from today.")
+
+
+class AttendancePlannerClassroomRequiredError(AppError):
+    code = "ATTENDANCE_PLANNER_CLASSROOM_REQUIRED"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def __init__(self) -> None:
+        super().__init__("An active classroom assignment is required to build a recovery plan.")
+
+
+class AttendancePlannerSubjectNotFoundError(AppError):
+    code = "ATTENDANCE_PLANNER_SUBJECT_NOT_FOUND"
+    status_code = status.HTTP_404_NOT_FOUND
+
+    def __init__(self) -> None:
+        super().__init__("The selected subject is not available in your classroom.")

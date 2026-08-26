@@ -13,6 +13,14 @@ const user: AuthUser = {
   created_at: "2026-08-23T00:00:00Z",
 };
 
+const demoStudent: AuthUser = {
+  ...user,
+  id: "demo-student-id",
+  email: "configured-on-server@example.com",
+  full_name: "Demo Student",
+  role: "student",
+};
+
 afterEach(() => {
   authSession.clearAccessToken();
   vi.restoreAllMocks();
@@ -67,6 +75,25 @@ describe("OTP auth API flow", () => {
       { challenge_id: "original-id" },
       { auth: false, retryOnUnauthorized: false },
     );
+  });
+});
+
+describe("public Student demo auth API flow", () => {
+  it("sends no identity or credential and establishes the normal client session", async () => {
+    const post = vi.spyOn(apiClient, "post").mockResolvedValue({
+      user: demoStudent,
+      token: { access_token: "demo-access-token", token_type: "bearer", expires_in: 900 },
+    });
+    vi.spyOn(apiClient, "get").mockResolvedValue(demoStudent);
+
+    await expect(authApi.loginDemoStudent()).resolves.toEqual(demoStudent);
+
+    expect(post).toHaveBeenCalledWith(
+      "/auth/demo-student",
+      undefined,
+      { auth: false, retryOnUnauthorized: false },
+    );
+    expect(authSession.getAccessToken()).toBe("demo-access-token");
   });
 });
 

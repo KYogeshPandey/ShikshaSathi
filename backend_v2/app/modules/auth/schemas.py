@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from typing import Literal, Self
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.modules.users.normalization import normalize_email
 from app.modules.users.schemas import UserRead
@@ -43,6 +43,12 @@ class AccessTokenInfo(BaseModel):
 class LoginResponse(BaseModel):
     user: UserRead
     token: AccessTokenInfo
+
+
+class DemoStudentLoginRequest(BaseModel):
+    """Strictly empty: the configured demo identity is always server-selected."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class OtpChallengeResponse(BaseModel):

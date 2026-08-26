@@ -96,6 +96,7 @@ class AttendanceRosterStudentRead(BaseModel):
     """Minimal active-classroom identity needed to mark or confirm attendance."""
 
     student_profile_id: uuid.UUID
+    full_name: str
     roll_number: str | None
 
 

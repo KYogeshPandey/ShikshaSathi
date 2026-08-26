@@ -101,6 +101,7 @@ class ReportsService:
                     attendance_date=row.attendance_date,
                     student_profile_id=row.student_profile_id,
                     roll_number=row.roll_number,
+                    full_name=row.full_name,
                     status=row.status,
                     remarks=row.remarks,
                 )
@@ -198,6 +199,7 @@ class ReportsService:
         return StudentAttendanceReportRow(
             student_profile_id=row.student_profile_id,
             roll_number=row.roll_number,
+            full_name=row.full_name,
             total_count=row.total_count,
             present_count=row.present_count,
             absent_count=row.absent_count,

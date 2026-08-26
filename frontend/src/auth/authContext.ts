@@ -15,6 +15,7 @@ export interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   login(credentials: LoginCredentials): Promise<LoginResult>;
+  loginDemoStudent(): Promise<AuthUser>;
   verifyOtp(challengeId: string, otp: string): Promise<AuthUser>;
   resendOtp(challengeId: string): Promise<OtpChallengeInfo>;
   requestPasswordReset(email: string): Promise<PasswordResetRequestInfo>;

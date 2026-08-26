@@ -29,9 +29,12 @@ from app.modules.face_recognition.router import router as face_recognition_route
 from app.modules.profiles.student_router import router as student_profiles_router
 from app.modules.profiles.teacher_router import router as teacher_profiles_router
 from app.modules.reports.router import router as reports_router
+from app.modules.student_onboarding.router import router as student_onboarding_router
+from app.modules.users.router import router as users_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
+api_router.include_router(users_router)
 api_router.include_router(classrooms_router)
 api_router.include_router(subjects_router)
 api_router.include_router(teacher_profiles_router)
@@ -46,3 +49,4 @@ api_router.include_router(analytics_router)
 api_router.include_router(audit_logs_router)
 api_router.include_router(biometric_enrollment_router)
 api_router.include_router(face_recognition_router)
+api_router.include_router(student_onboarding_router)

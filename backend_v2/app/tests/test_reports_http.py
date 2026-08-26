@@ -75,6 +75,8 @@ async def test_attendance_report_month_summary_detail_and_direct_db_spot_check(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="report-summary")
+    scope["student_1"].full_name = "Yogesh Pandey"
+    await db_session.commit()
     await _mark(
         client_db,
         scope,
@@ -121,6 +123,7 @@ async def test_attendance_report_month_summary_detail_and_direct_db_spot_check(
         REPORT_DATE_2,
         REPORT_DATE_3,
     ]
+    assert {row["full_name"] for row in body["details"]} == {"Yogesh Pandey"}
 
     database_total = int(
         (
@@ -277,6 +280,8 @@ async def test_defaulters_include_zero_records_and_exclude_exact_threshold(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="defaulters")
+    scope["student_2"].full_name = "Krish Sharma"
+    await db_session.commit()
     await _mark(
         client_db,
         scope,
@@ -304,6 +309,7 @@ async def test_defaulters_include_zero_records_and_exclude_exact_threshold(
         {
             "student_profile_id": scope["student_profile_2"]["id"],
             "roll_number": "02",
+            "full_name": "Krish Sharma",
             "total_count": 0,
             "present_count": 0,
             "absent_count": 0,
@@ -398,6 +404,8 @@ async def test_report_csv_matches_student_filter_and_escapes_formula_cells(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="report-csv")
+    scope["student_1"].full_name = "Yogesh Pandey"
+    await db_session.commit()
     await _mark(
         client_db,
         scope,
@@ -426,7 +434,9 @@ async def test_report_csv_matches_student_filter_and_escapes_formula_cells(
     rows = list(csv.reader(io.StringIO(response.content.decode("utf-8"))))
     assert rows[0] == list(REPORT_CSV_COLUMNS)
     assert len(rows) == 2
-    assert rows[1][1] == scope["student_profile_1"]["id"]
+    assert rows[1][1] == "01"
+    assert rows[1][2] == "Yogesh Pandey"
+    assert scope["student_profile_1"]["id"] not in rows[1]
     assert rows[1][-1] == "'=2+2"
     assert after - before == set()
 
@@ -447,6 +457,8 @@ async def test_report_pdf_headers_content_and_no_temp_file(
     client_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     scope = await seed_attendance_scope(client_db, db_session, suffix="report-pdf")
+    scope["student_1"].full_name = "Yogesh Pandey"
+    await db_session.commit()
     await _mark(
         client_db,
         scope,
@@ -467,6 +479,8 @@ async def test_report_pdf_headers_content_and_no_temp_file(
     assert response.content.startswith(b"%PDF")
     assert b"Attendance report" in response.content
     assert b"Attendance: 100.00%" in response.content
+    assert b"Yogesh Pandey" in response.content
+    assert scope["student_profile_1"]["id"].encode() not in response.content
     assert after - before == set()
 
 
@@ -487,6 +501,7 @@ def test_report_pdf_paginates_large_bounded_result_in_memory() -> None:
                 attendance_date=date(2026, 8, (index % 28) + 1),
                 student_profile_id=student_id,
                 roll_number=str(index),
+                full_name="Yogesh Pandey",
                 status=AttendanceStatus.PRESENT,
                 remarks=None,
             )

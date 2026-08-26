@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -21,6 +21,7 @@ from app.modules.auth.email import OtpEmailSenderDependency
 from app.modules.auth.errors import InvalidRefreshTokenError
 from app.modules.auth.schemas import (
     AccessTokenInfo,
+    DemoStudentLoginRequest,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
@@ -105,6 +106,24 @@ def _password_reset_grant_response(
         reset_token=result.reset_token,
         expires_in=result.expires_in_seconds,
     )
+
+
+@router.post(
+    "/demo-student",
+    response_model=LoginResponse,
+    summary="Create a normal session for the configured public Student demo",
+    responses={503: {"description": "The public Student demo is unavailable."}},
+)
+async def login_demo_student(
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _origin_ok: Annotated[None, Depends(verify_same_origin)],
+    _payload: Annotated[DemoStudentLoginRequest | None, Body()] = None,
+) -> LoginResponse:
+    result = await AuthService(session=session, settings=settings).login_demo_student()
+    _set_refresh_cookie(response, result, settings)
+    return LoginResponse(user=UserRead.model_validate(result.user), token=_token_info(result))
 
 
 @router.post(

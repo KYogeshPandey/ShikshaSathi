@@ -27,6 +27,16 @@ class InvalidCredentialsError(AppError):
         super().__init__("Incorrect email or password.")
 
 
+class DemoStudentLoginUnavailableError(AppError):
+    """All disabled/missing/inactive/misconfigured demo identities fail alike."""
+
+    code = "DEMO_STUDENT_LOGIN_UNAVAILABLE"
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__("Student demo is temporarily unavailable.")
+
+
 class InvalidRefreshTokenError(AppError):
     """Missing, malformed, expired, revoked, or reused refresh token.
 

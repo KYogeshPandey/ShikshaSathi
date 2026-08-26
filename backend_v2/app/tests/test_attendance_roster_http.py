@@ -74,10 +74,11 @@ async def test_admin_roster_is_minimal_active_classroom_membership_only(
     assert body == [
         {
             "student_profile_id": active_profile["id"],
+            "full_name": scope["student_1"].full_name,
             "roll_number": active_profile["roll_number"],
         }
     ]
-    assert set(body[0]) == {"student_profile_id", "roll_number"}
+    assert set(body[0]) == {"student_profile_id", "full_name", "roll_number"}
     assert not any(
         fragment in key
         for key in body[0]

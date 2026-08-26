@@ -240,7 +240,7 @@ export function ReportsPage() {
             <span>Attendance student (optional)</span>
             <select disabled={!roster.data} {...form.register("student_profile_id")}>
               <option value="">All active students</option>
-              {roster.data?.map((student) => <option key={student.student_profile_id} value={student.student_profile_id}>Roll {student.roll_number ?? "not assigned"}</option>)}
+              {roster.data?.map((student) => <option key={student.student_profile_id} value={student.student_profile_id}>{student.full_name} · Roll {student.roll_number ?? "not assigned"}</option>)}
             </select>
           </label>
           <label className="field">
@@ -267,7 +267,7 @@ export function ReportsPage() {
             <div><span>Classroom</span><strong>{appliedClassroom ? `${appliedClassroom.name} (${appliedClassroom.code})` : "Selected classroom"}</strong></div>
             <div><span>Subject</span><strong>{appliedSubject ? `${appliedSubject.name} (${appliedSubject.code})` : "Selected subject"}</strong></div>
             <div><span>Period</span><strong>{attendance.data.period.date_from} to {attendance.data.period.date_to}</strong></div>
-            <div><span>Student</span><strong>{filters?.studentProfileId ? `Roll ${appliedStudent?.roll_number ?? "not assigned"}` : "All active students"}</strong></div>
+            <div><span>Student</span><strong>{filters?.studentProfileId ? `${appliedStudent?.full_name ?? "Student"} · Roll ${appliedStudent?.roll_number ?? "not assigned"}` : "All active students"}</strong></div>
             <p>Attendance = present ÷ all marked records. Unmarked records are not counted as absent. CSV and PDF exports use this same applied scope.</p>
           </section>
           <div className="metric-grid">
@@ -286,7 +286,7 @@ export function ReportsPage() {
             {exportError ? <p className="error-message" role="alert">{apiErrorMessage(exportError)}</p> : null}
             {exportLoading ? <SlowRequestNotice /> : null}
             {attendance.data.details.length === 0 ? <p className="empty-state">No attendance records match these filters.</p> : (
-              <div className="table-scroll" role="region" aria-label="Attendance detail table" tabIndex={0}><table><thead><tr><th>Date</th><th>Roll</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>{attendance.data.details.map((row) => <tr key={`${row.attendance_date}-${row.student_profile_id}`}><td>{row.attendance_date}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td><span className={`status-pill status-pill--${row.status}`}>{row.status}</span></td><td>{row.remarks ?? "-"}</td></tr>)}</tbody></table></div>
+              <div className="table-scroll" role="region" aria-label="Attendance detail table" tabIndex={0}><table><thead><tr><th>Date</th><th>Roll</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>{attendance.data.details.map((row) => <tr key={`${row.attendance_date}-${row.student_profile_id}`}><td>{row.attendance_date}</td><td>{row.roll_number ?? "-"}</td><td>{row.full_name}</td><td><span className={`status-pill status-pill--${row.status}`}>{row.status}</span></td><td>{row.remarks ?? "-"}</td></tr>)}</tbody></table></div>
             )}
           </div>
         </>
@@ -295,14 +295,14 @@ export function ReportsPage() {
       {defaulters.data ? (
         <div className="table-card">
           <div className="table-card__header"><h2>Defaulters below {defaulters.data.threshold}%</h2><span>{defaulters.data.students.length} students</span></div>
-          {defaulters.data.students.length === 0 ? <p className="empty-state">No active students are below this threshold.</p> : <div className="table-scroll" role="region" aria-label="Attendance defaulters table" tabIndex={0}><table><thead><tr><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{defaulters.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
+          {defaulters.data.students.length === 0 ? <p className="empty-state">No active students are below this threshold.</p> : <div className="table-scroll" role="region" aria-label="Attendance defaulters table" tabIndex={0}><table><thead><tr><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{defaulters.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.roll_number ?? "-"}</td><td>{row.full_name}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
         </div>
       ) : null}
 
       {leaderboard.data ? (
         <div className="table-card">
           <div className="table-card__header"><h2>Classroom leaderboard</h2><span>{leaderboard.data.students.length} active students</span></div>
-          {leaderboard.data.students.length === 0 ? <p className="empty-state">No active students are in this classroom.</p> : <div className="table-scroll" role="region" aria-label="Classroom leaderboard table" tabIndex={0}><table><thead><tr><th>Rank</th><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{leaderboard.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.rank}</td><td>{row.roll_number ?? "-"}</td><td>{row.student_profile_id}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
+          {leaderboard.data.students.length === 0 ? <p className="empty-state">No active students are in this classroom.</p> : <div className="table-scroll" role="region" aria-label="Classroom leaderboard table" tabIndex={0}><table><thead><tr><th>Rank</th><th>Roll</th><th>Student</th><th>Present</th><th>Total</th><th>Attendance</th></tr></thead><tbody>{leaderboard.data.students.map((row) => <tr key={row.student_profile_id}><td>{row.rank}</td><td>{row.roll_number ?? "-"}</td><td>{row.full_name}</td><td>{row.present_count}</td><td>{row.total_count}</td><td>{row.attendance_percentage.toFixed(2)}%</td></tr>)}</tbody></table></div>}
         </div>
       ) : null}
     </section>

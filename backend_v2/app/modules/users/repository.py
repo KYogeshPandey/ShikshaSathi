@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +54,31 @@ class UserRepository:
         stmt = select(User).where(User.email == email)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_role(
+        self,
+        role: UserRole,
+        *,
+        include_inactive: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[User]:
+        stmt = (
+            select(User)
+            .where(User.role == role)
+            .order_by(User.full_name, User.email, User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        if not include_inactive:
+            stmt = stmt.where(User.is_active.is_(True))
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    async def count_by_role(self, role: UserRole, *, include_inactive: bool = False) -> int:
+        stmt = select(func.count()).select_from(User).where(User.role == role)
+        if not include_inactive:
+            stmt = stmt.where(User.is_active.is_(True))
+        return int((await self._session.execute(stmt)).scalar_one())
 
     async def create(
         self,

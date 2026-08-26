@@ -2,6 +2,8 @@ import { apiClient } from "./client";
 import { withQuery } from "./params";
 import type {
   AttendanceBulkSaveResult,
+  AttendanceRecoveryPlan,
+  AttendanceRecoveryPlanRequest,
   AttendanceRecord,
   AttendanceRosterStudent,
   BulkAttendanceRequest,
@@ -63,4 +65,6 @@ export const attendanceApi = {
         date_to: filters.dateTo,
       }),
     ),
+  getRecoveryPlan: (payload: AttendanceRecoveryPlanRequest) =>
+    apiClient.post<AttendanceRecoveryPlan>("/attendance/me/recovery-plan", payload),
 };

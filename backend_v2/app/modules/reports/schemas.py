@@ -27,6 +27,7 @@ class AttendanceReportDetailRow(BaseModel):
     attendance_date: date
     student_profile_id: uuid.UUID
     roll_number: str | None
+    full_name: str
     status: AttendanceStatus
     remarks: str | None
 
@@ -43,6 +44,7 @@ class AttendanceReportResponse(BaseModel):
 class StudentAttendanceReportRow(BaseModel):
     student_profile_id: uuid.UUID
     roll_number: str | None
+    full_name: str
     total_count: int
     present_count: int
     absent_count: int

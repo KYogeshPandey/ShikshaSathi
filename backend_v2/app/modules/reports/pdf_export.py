@@ -36,7 +36,7 @@ def _draw_header(canvas: Canvas, *, title: str, subtitle: str, summary: str) -> 
     canvas.setFont("Helvetica-Bold", 8)
     canvas.drawString(_LEFT, y, "Date")
     canvas.drawString(105, y, "Roll number")
-    canvas.drawString(205, y, "Student profile ID")
+    canvas.drawString(205, y, "Student")
     canvas.drawString(430, y, "Status")
     canvas.drawString(480, y, "Remarks")
     return y - _ROW_HEIGHT
@@ -59,7 +59,7 @@ def _draw_rows(
             canvas.setFont("Helvetica", 7)
         canvas.drawString(_LEFT, y, row.attendance_date.isoformat())
         canvas.drawString(105, y, _plain(row.roll_number, limit=16) or "—")
-        canvas.drawString(205, y, str(row.student_profile_id))
+        canvas.drawString(205, y, _plain(row.full_name, limit=36))
         canvas.drawString(430, y, row.status.value)
         canvas.drawString(480, y, _plain(row.remarks, limit=17) or "—")
         y -= _ROW_HEIGHT

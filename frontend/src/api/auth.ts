@@ -11,6 +11,11 @@ import {
   type PasswordResetRequestInfo,
 } from "../types/auth";
 
+async function establishSession(response: LoginResponse): Promise<AuthUser> {
+  authSession.setAccessToken(response.token.access_token);
+  return apiClient.get<AuthUser>("/auth/me");
+}
+
 export const authApi = {
   async restoreSession(): Promise<AuthUser | null> {
     try {
@@ -28,8 +33,15 @@ export const authApi = {
       retryOnUnauthorized: false,
     });
     if ("otp_required" in response) return response;
-    authSession.setAccessToken(response.token.access_token);
-    return apiClient.get<AuthUser>("/auth/me");
+    return establishSession(response);
+  },
+
+  async loginDemoStudent(): Promise<AuthUser> {
+    const response = await apiClient.post<LoginResponse>("/auth/demo-student", undefined, {
+      auth: false,
+      retryOnUnauthorized: false,
+    });
+    return establishSession(response);
   },
 
   async verifyOtp(challengeId: string, otp: string): Promise<AuthUser> {
@@ -38,8 +50,7 @@ export const authApi = {
       { challenge_id: challengeId, otp },
       { auth: false, retryOnUnauthorized: false },
     );
-    authSession.setAccessToken(response.token.access_token);
-    return apiClient.get<AuthUser>("/auth/me");
+    return establishSession(response);
   },
 
   async resendOtp(challengeId: string): Promise<OtpChallengeInfo> {

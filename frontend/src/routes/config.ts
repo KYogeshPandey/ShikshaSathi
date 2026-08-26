@@ -51,6 +51,8 @@ export const roleRouteDefinitions = {
     navigation: [
       { label: "Overview", to: "/student", end: true },
       { label: "My attendance", to: "/student/attendance" },
+      { label: "Recovery planner", to: "/student/recovery-planner" },
+      { label: "Weekly timetable", to: "/student/timetable" },
       { label: "Announcements", to: "/student/announcements" },
     ],
   },

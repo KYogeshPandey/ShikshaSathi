@@ -22,6 +22,7 @@ import { App } from "./App";
 const authApiMocks = vi.hoisted(() => ({
   restoreSession: vi.fn<() => Promise<AuthUser | null>>(),
   login: vi.fn<(credentials: LoginCredentials) => Promise<LoginResult>>(),
+  loginDemoStudent: vi.fn<() => Promise<AuthUser>>(),
   verifyOtp: vi.fn<(challengeId: string, otp: string) => Promise<AuthUser>>(),
   resendOtp: vi.fn<(challengeId: string) => Promise<OtpChallengeInfo>>(),
   requestPasswordReset: vi.fn<(email: string) => Promise<PasswordResetRequestInfo>>(),
@@ -45,6 +46,7 @@ const dashboardApiMocks = vi.hoisted(() => ({
   getMyTeacherProfile: vi.fn(),
   getMyStudentProfile: vi.fn(),
   getMyStats: vi.fn(),
+  getRecoveryPlan: vi.fn(),
   listClassrooms: vi.fn(),
   listSubjects: vi.fn(),
   listTimetable: vi.fn(),
@@ -55,7 +57,10 @@ vi.mock("../api/profiles", () => ({ profilesApi: {
   getMyTeacherProfile: dashboardApiMocks.getMyTeacherProfile,
   getMyStudentProfile: dashboardApiMocks.getMyStudentProfile,
 } }));
-vi.mock("../api/attendance", () => ({ attendanceApi: { getMyStats: dashboardApiMocks.getMyStats } }));
+vi.mock("../api/attendance", () => ({ attendanceApi: {
+  getMyStats: dashboardApiMocks.getMyStats,
+  getRecoveryPlan: dashboardApiMocks.getRecoveryPlan,
+} }));
 vi.mock("../api/academics", () => ({ academicsApi: {
   listClassrooms: dashboardApiMocks.listClassrooms,
   listSubjects: dashboardApiMocks.listSubjects,
@@ -123,6 +128,7 @@ function analyticsOverview(days: 7 | 30 = 7) {
 beforeEach(() => {
   authApiMocks.restoreSession.mockReset();
   authApiMocks.login.mockReset();
+  authApiMocks.loginDemoStudent.mockReset();
   authApiMocks.verifyOtp.mockReset();
   authApiMocks.resendOtp.mockReset();
   authApiMocks.requestPasswordReset.mockReset();
@@ -138,6 +144,28 @@ beforeEach(() => {
   dashboardApiMocks.getMyTeacherProfile.mockResolvedValue({ ...resource, id: "teacher-profile", user_id: "teacher-user", employee_code: "T-7", phone_number: null });
   dashboardApiMocks.getMyStudentProfile.mockResolvedValue({ ...resource, id: "student-profile", user_id: "student-user", classroom_id: null, roll_number: "7" });
   dashboardApiMocks.getMyStats.mockResolvedValue({ student_profile_id: "student-profile", total_count: 10, present_count: 8, absent_count: 2, attendance_percentage: 80 });
+  dashboardApiMocks.getRecoveryPlan.mockImplementation(async (payload: { target_percentage: number; deadline: string; subject_id?: string }) => ({
+    scope: payload.subject_id ? "subject" : "overall",
+    subject_id: payload.subject_id ?? null,
+    subject_name: null,
+    target_percentage: payload.target_percentage,
+    deadline: payload.deadline,
+    current: { attended: 8, held: 10, absent: 2, percentage: 80 },
+    overall: { attended: 8, held: 10, absent: 2, percentage: 80 },
+    overall_status: "safe",
+    subjects: [],
+    status: "safe",
+    reachable: true,
+    classes_required: 0,
+    scheduled_classes_remaining: 0,
+    scheduled_teaching_days_remaining: 0,
+    teaching_days_required: 0,
+    recovery_date: null,
+    projected_attendance_percentage: 80,
+    projected_max_percentage: 80,
+    attendance_buffer_classes: 0,
+    schedule_assumption: "Scheduled timetable classes only.",
+  }));
   dashboardApiMocks.listClassrooms.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
   dashboardApiMocks.listSubjects.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
   dashboardApiMocks.listTimetable.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
@@ -151,6 +179,88 @@ describe("application and authentication", () => {
         name: /one workspace for smarter school operations/i,
       }),
     ).toBeVisible();
+  });
+
+  it("shows the public demo video, sign-in CTA, and safe Student demo access", async () => {
+    renderApplication("/");
+    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+
+    const video = screen.getByLabelText("ShikshaSathi product demonstration");
+    expect(video).toBeInstanceOf(HTMLVideoElement);
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video.querySelector("source")).toHaveAttribute(
+      "src",
+      "/demo/shikshasathi-demo.mp4",
+    );
+
+    expect(
+      screen.getAllByRole("link", { name: /^sign in/i }).some(
+        (link) => link.getAttribute("href") === "/login",
+      ),
+    ).toBe(true);
+    expect(screen.getAllByRole("button", { name: /explore student demo/i })).toHaveLength(2);
+    expect(screen.queryByText("student.01@demo.shikshasathi.example")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/admin\s+(?:demo\s+)?password/i);
+    expect(document.body).not.toHaveTextContent(/teacher\s+(?:demo\s+)?password/i);
+  });
+
+  it("presents the polished review-first workflow, security controls, and local technology marks", async () => {
+    renderApplication("/");
+    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+
+    for (const step of [
+      "Student Onboarding",
+      "Teacher Capture",
+      "AI Recognition",
+      "Human Review",
+      "Reports & Student Insight",
+    ]) {
+      expect(screen.getByRole("heading", { name: step })).toBeVisible();
+    }
+    expect(screen.getByText("Role-Based Access Control")).toBeVisible();
+    expect(screen.getByText("Human-reviewed biometric attendance")).toBeVisible();
+    for (const technology of ["React", "TypeScript", "FastAPI", "PostgreSQL", "Docker", "Vercel", "Render", "Neon"]) {
+      expect(screen.getByText(technology)).toBeVisible();
+    }
+    expect(document.querySelectorAll(".ss-technology-chip img")).toHaveLength(0);
+  });
+
+  it("opens the configured Student demo through normal auth state without credentials", async () => {
+    const demoStudent = makeUser("student");
+    let resolveDemo!: (user: AuthUser) => void;
+    authApiMocks.loginDemoStudent.mockReturnValue(
+      new Promise<AuthUser>((resolve) => {
+        resolveDemo = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderApplication("/");
+    const demoButtons = await screen.findAllByRole("button", { name: "Explore Student Demo" });
+
+    await user.click(demoButtons[0]);
+
+    expect(authApiMocks.loginDemoStudent).toHaveBeenCalledWith();
+    expect(screen.getByRole("button", { name: "Opening Student Demo…" })).toBeDisabled();
+    resolveDemo(demoStudent);
+    expect(await screen.findByRole("heading", { name: "Student portal" })).toBeVisible();
+  });
+
+  it("shows a neutral error when the Student demo is unavailable", async () => {
+    authApiMocks.loginDemoStudent.mockRejectedValue(
+      new ApiError(503, "DEMO_STUDENT_LOGIN_UNAVAILABLE", "Unavailable."),
+    );
+    const user = userEvent.setup();
+    renderApplication("/");
+    const demoButtons = await screen.findAllByRole("button", { name: "Explore Student Demo" });
+
+    await user.click(demoButtons[0]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Student demo is temporarily unavailable.",
+    );
   });
 
   it("closes the landing navigation with Escape and returns focus to its trigger", async () => {
@@ -182,6 +292,18 @@ describe("application and authentication", () => {
     expect(await screen.findByText(/email is required/i)).toBeVisible();
     expect(screen.getByText(/password is required/i)).toBeVisible();
     expect(authApiMocks.login).not.toHaveBeenCalled();
+  });
+
+  it("keeps the canonical login blank and public-home navigation visible", async () => {
+    renderApplication("/login");
+
+    expect(await screen.findByLabelText(/^email$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^password$/i)).toHaveValue("");
+    expect(
+      screen.getAllByRole("link", { name: /back to shikshasathi home/i }).every(
+        (link) => link.getAttribute("href") === "/",
+      ),
+    ).toBe(true);
   });
 
   it("redirects to the authenticated user's role after a successful login", async () => {
@@ -551,6 +673,16 @@ describe("role routing", () => {
     renderApplication("/student/reports");
     expect(await screen.findByRole("heading", { name: /page not available/i })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/student/recovery-planner", "Attendance Recovery Planner", "Recovery planner"],
+    ["/student/timetable", "Weekly timetable", "Weekly timetable"],
+  ])("allows the Student demo role to access %s", async (path, heading, navLabel) => {
+    authApiMocks.restoreSession.mockResolvedValue(makeUser("student"));
+    renderApplication(path);
+    expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+    expect(screen.getByRole("link", { name: navLabel })).toBeVisible();
   });
 
   it("offers a retry when dashboard analytics cannot be loaded", async () => {

@@ -183,7 +183,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         request_id_header = getattr(request.state, "request_id_header", None) or "X-Request-ID"
         message = (
             "Too many login attempts. Please try again later."
-            if request.url.path.endswith("/auth/login")
+            if request.url.path.endswith(("/auth/login", "/auth/demo-student"))
             else "Too many authentication attempts. Please try again later."
         )
         logger.warning(

@@ -14,6 +14,8 @@ import { ReportsPage } from "../pages/ReportsPage";
 import { RoleNotFoundPage } from "../pages/RoleNotFoundPage";
 import { StudentAttendancePage } from "../pages/StudentAttendancePage";
 import { StudentDashboard } from "../pages/StudentDashboard";
+import { StudentRecoveryPlannerPage } from "../pages/StudentRecoveryPlannerPage";
+import { StudentTimetablePage } from "../pages/StudentTimetablePage";
 import { TeacherDashboard } from "../pages/TeacherDashboard";
 import { TeacherSchedulePage } from "../pages/TeacherSchedulePage";
 import { UnauthorizedPage } from "../pages/UnauthorizedPage";
@@ -68,6 +70,8 @@ export function App() {
           <Route path="/student" element={<StudentLayout />}>
             <Route index element={<StudentDashboard />} />
             <Route path="attendance" element={<StudentAttendancePage />} />
+            <Route path="recovery-planner" element={<StudentRecoveryPlannerPage />} />
+            <Route path="timetable" element={<StudentTimetablePage />} />
             <Route path="announcements" element={<AnnouncementsPage />} />
             <Route path="*" element={<RoleNotFoundPage role="student" />} />
           </Route>

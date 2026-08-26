@@ -68,8 +68,8 @@ beforeEach(() => {
     offset: 0,
   });
   mocks.getRoster.mockResolvedValue([
-    { student_profile_id: ids.student1, roll_number: "01" },
-    { student_profile_id: ids.student2, roll_number: "02" },
+    { student_profile_id: ids.student1, full_name: "Yogesh Pandey", roll_number: "101" },
+    { student_profile_id: ids.student2, full_name: "Krish Sharma", roll_number: "103" },
   ]);
   mocks.getAttendance.mockResolvedValue({
     classroom_id: ids.classroom,
@@ -78,8 +78,8 @@ beforeEach(() => {
     period: period(),
     summary: { total_count: 2, present_count: 1, absent_count: 1, attendance_percentage: 50 },
     details: [
-      { attendance_date: "2026-08-01", student_profile_id: ids.student1, roll_number: "01", status: "present", remarks: null },
-      { attendance_date: "2026-08-01", student_profile_id: ids.student2, roll_number: "02", status: "absent", remarks: "Late" },
+      { attendance_date: "2026-08-01", student_profile_id: ids.student1, full_name: "Yogesh Pandey", roll_number: "101", status: "present", remarks: null },
+      { attendance_date: "2026-08-01", student_profile_id: ids.student2, full_name: "Krish Sharma", roll_number: "103", status: "absent", remarks: "Late" },
     ],
   });
   mocks.getDefaulters.mockResolvedValue({
@@ -89,7 +89,7 @@ beforeEach(() => {
     threshold: 75,
     zero_attendance_policy: "included_as_zero_percent",
     students: [
-      { student_profile_id: ids.student2, roll_number: "02", total_count: 2, present_count: 1, absent_count: 1, attendance_percentage: 50 },
+      { student_profile_id: ids.student2, full_name: "Krish Sharma", roll_number: "103", total_count: 2, present_count: 1, absent_count: 1, attendance_percentage: 50 },
     ],
   });
   mocks.getLeaderboard.mockResolvedValue({
@@ -98,8 +98,8 @@ beforeEach(() => {
     period: period(),
     tie_breaking: "percentage_desc_roll_number_asc_student_profile_id_asc",
     students: [
-      { rank: 1, student_profile_id: ids.student1, roll_number: "01", total_count: 2, present_count: 2, absent_count: 0, attendance_percentage: 100 },
-      { rank: 2, student_profile_id: ids.student2, roll_number: "02", total_count: 2, present_count: 1, absent_count: 1, attendance_percentage: 50 },
+      { rank: 1, student_profile_id: ids.student1, full_name: "Yogesh Pandey", roll_number: "101", total_count: 2, present_count: 2, absent_count: 0, attendance_percentage: 100 },
+      { rank: 2, student_profile_id: ids.student2, full_name: "Krish Sharma", roll_number: "103", total_count: 2, present_count: 1, absent_count: 1, attendance_percentage: 50 },
     ],
   });
   mocks.downloadAttendance.mockResolvedValue({
@@ -154,11 +154,25 @@ describe("reports workflow", () => {
     expect(screen.getAllByText("50.00%")).toHaveLength(3);
     expect(screen.getByText("Late")).toBeVisible();
 
+    const detailTable = screen.getByRole("region", { name: "Attendance detail table" });
+    expect(within(detailTable).getByText("Yogesh Pandey")).toBeVisible();
+    expect(within(detailTable).getByText("101")).toBeVisible();
+    expect(within(detailTable).queryByText(ids.student1)).not.toBeInTheDocument();
+
+    const defaultersTable = screen.getByRole("region", {
+      name: "Attendance defaulters table",
+    });
+    expect(within(defaultersTable).getByText("Krish Sharma")).toBeVisible();
+    expect(within(defaultersTable).getByText("103")).toBeVisible();
+    expect(within(defaultersTable).queryByText(ids.student2)).not.toBeInTheDocument();
+
     const leaderboardCard = screen.getByRole("heading", { name: "Classroom leaderboard" }).closest(".table-card");
     expect(leaderboardCard).not.toBeNull();
     const rows = within(leaderboardCard as HTMLElement).getAllByRole("row").slice(1);
-    expect(within(rows[0]!).getByText("01")).toBeVisible();
-    expect(within(rows[1]!).getByText("02")).toBeVisible();
+    expect(within(rows[0]!).getByText("Yogesh Pandey")).toBeVisible();
+    expect(within(rows[0]!).getByText("101")).toBeVisible();
+    expect(within(rows[1]!).getByText("Krish Sharma")).toBeVisible();
+    expect(within(rows[1]!).getByText("103")).toBeVisible();
   });
 
   it("surfaces report errors without presenting stale success", async () => {

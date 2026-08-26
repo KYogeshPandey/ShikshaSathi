@@ -12,6 +12,15 @@ interface ActiveResource {
   updated_at: string;
 }
 
+export interface UserDirectoryEntry {
+  id: string;
+  email: string;
+  full_name: string;
+  role: "admin" | "teacher" | "student";
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Classroom extends ActiveResource {
   name: string;
   code: string;
@@ -162,6 +171,7 @@ export type AttendanceStatus = "present" | "absent";
 
 export interface AttendanceRosterStudent {
   student_profile_id: string;
+  full_name: string;
   roll_number: string | null;
 }
 
@@ -212,6 +222,61 @@ export interface StudentSelfStats {
   present_count: number;
   absent_count: number;
   attendance_percentage: number;
+}
+
+export type AttendancePlanStatus =
+  | "safe"
+  | "recovery_possible"
+  | "tight_recovery"
+  | "not_reachable";
+
+export type SubjectAttendanceStatus =
+  | "safe"
+  | "near_target"
+  | "recovery_needed"
+  | "no_history";
+
+export interface AttendancePlanCounts {
+  attended: number;
+  held: number;
+  absent: number;
+  percentage: number;
+}
+
+export interface SubjectAttendanceSummary extends AttendancePlanCounts {
+  subject_id: string;
+  subject_name: string;
+  subject_code: string;
+  status: SubjectAttendanceStatus;
+}
+
+export interface AttendanceRecoveryPlanRequest {
+  target_percentage: number;
+  deadline: string;
+  subject_id?: string;
+}
+
+export interface AttendanceRecoveryPlan {
+  scope: "overall" | "subject";
+  subject_id: string | null;
+  subject_name: string | null;
+  target_percentage: number;
+  deadline: string;
+  current: AttendancePlanCounts;
+  overall: AttendancePlanCounts;
+  overall_status: SubjectAttendanceStatus;
+  subjects: SubjectAttendanceSummary[];
+  status: AttendancePlanStatus;
+  reachable: boolean;
+  classes_required: number | null;
+  scheduled_classes_remaining: number;
+  scheduled_teaching_days_remaining: number;
+  teaching_days_required: number | null;
+  recovery_date: string | null;
+  projected_attendance_percentage: number;
+  projected_max_percentage: number;
+  attendance_buffer_classes: number;
+  schedule_assumption: string;
 }
 
 export type AnalyticsWindowDays = 7 | 30;
@@ -284,6 +349,7 @@ export interface AttendanceReportDetailRow {
   attendance_date: string;
   student_profile_id: string;
   roll_number: string | null;
+  full_name: string;
   status: AttendanceStatus;
   remarks: string | null;
 }
@@ -300,6 +366,7 @@ export interface AttendanceReport {
 export interface StudentAttendanceReportRow {
   student_profile_id: string;
   roll_number: string | null;
+  full_name: string;
   total_count: number;
   present_count: number;
   absent_count: number;
@@ -387,4 +454,36 @@ export interface BulkImportResult {
   imported_count: number;
   failed_count: number;
   errors: Array<{ row_number: number; code: string; message: string }>;
+}
+
+export interface StudentOnboardingIssue {
+  code: string;
+  message: string;
+}
+
+export interface StudentOnboardingStudentResult {
+  row_number: number;
+  student_profile_id: string | null;
+  full_name: string | null;
+  roll_number: string | null;
+  profile_status: "imported" | "existing" | "failed";
+  photo_filename: string | null;
+  photo_status: "not_provided" | "matched" | "missing" | "duplicate" | "invalid";
+  biometric_status:
+    | "not_requested"
+    | "not_processed"
+    | "enrolled"
+    | "failed"
+    | "already_enrolled";
+  issues: StudentOnboardingIssue[];
+}
+
+export interface StudentOnboardingResult {
+  classroom_id: string;
+  classroom_name: string;
+  total_students: number;
+  profile_success_count: number;
+  face_success_count: number;
+  students: StudentOnboardingStudentResult[];
+  unmatched_files: Array<{ filename: string; code: string; message: string }>;
 }

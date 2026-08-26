@@ -11,8 +11,8 @@ from app.modules.reports.schemas import AttendanceReportResponse
 
 REPORT_CSV_COLUMNS: tuple[str, ...] = (
     "attendance_date",
-    "student_profile_id",
     "roll_number",
+    "full_name",
     "status",
     "remarks",
 )
@@ -26,8 +26,8 @@ def build_report_csv(report: AttendanceReportResponse) -> str:
         writer.writerow(
             [
                 row.attendance_date.isoformat(),
-                str(row.student_profile_id),
                 safe_csv_text_cell(row.roll_number),
+                safe_csv_text_cell(row.full_name),
                 row.status.value,
                 safe_csv_text_cell(row.remarks),
             ]

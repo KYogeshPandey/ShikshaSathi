@@ -22,6 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.modules.attendance.csv_export import build_attendance_csv, build_export_filename
 from app.modules.attendance.models import AttendanceStatus
+from app.modules.attendance.planner_schemas import (
+    AttendanceRecoveryPlanRead,
+    AttendanceRecoveryPlanRequest,
+)
+from app.modules.attendance.planner_service import AttendanceRecoveryPlannerService
 from app.modules.attendance.read_service import AttendanceReadService
 from app.modules.attendance.schemas import (
     AttendanceBulkSaveResult,
@@ -264,3 +269,13 @@ async def get_my_attendance_stats(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+@router.post("/me/recovery-plan", response_model=AttendanceRecoveryPlanRead)
+async def build_my_attendance_recovery_plan(
+    payload: AttendanceRecoveryPlanRequest,
+    current_user: StudentUser,
+    session: Session,
+) -> AttendanceRecoveryPlanRead:
+    """Build a timetable-aware plan for the authenticated student only."""
+    return await AttendanceRecoveryPlannerService(session).build_plan(current_user, payload)

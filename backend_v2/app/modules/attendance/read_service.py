@@ -279,21 +279,22 @@ class AttendanceReadService:
             request_id=request_id,
             action=ACTION_ATTENDANCE_READ_ROSTER,
         )
-        profiles = await self._students.list_by_classroom(classroom_id)
-        active_profiles = sorted(
-            (profile for profile in profiles if profile.is_active),
-            key=lambda profile: (
-                profile.roll_number is None,
-                profile.roll_number or "",
-                str(profile.id),
+        identities = await self._students.list_identities_by_classroom(classroom_id)
+        active_identities = sorted(
+            (identity for identity in identities if identity.profile.is_active),
+            key=lambda identity: (
+                identity.profile.roll_number is None,
+                identity.profile.roll_number or "",
+                str(identity.profile.id),
             ),
         )
         return [
             AttendanceRosterStudentRead(
-                student_profile_id=profile.id,
-                roll_number=profile.roll_number,
+                student_profile_id=identity.profile.id,
+                full_name=identity.full_name,
+                roll_number=identity.profile.roll_number,
             )
-            for profile in active_profiles
+            for identity in active_identities
         ]
 
     # --- detail -------------------------------------------------------------
@@ -515,7 +516,7 @@ class AttendanceReadService:
 
     # --- student self-service ------------------------------------------
 
-    async def _resolve_own_student_profile(self, current_user: User) -> StudentProfile:
+    async def resolve_own_student_profile(self, current_user: User) -> StudentProfile:
         """Identity-derived own ``StudentProfile`` — never a client-supplied ID.
 
         Raises ``AttendanceRoleNotPermittedError`` (403) for any non-student
@@ -546,7 +547,7 @@ class AttendanceReadService:
     ) -> Page[AttendanceRecordRead]:
         """The caller's own attendance only. ``student_profile_id`` is never accepted."""
         _validate_date_range(date_from, date_to)
-        profile = await self._resolve_own_student_profile(current_user)
+        profile = await self.resolve_own_student_profile(current_user)
         rows = await self._attendance.list(
             classroom_id=classroom_id,
             subject_id=subject_id,
@@ -582,7 +583,7 @@ class AttendanceReadService:
         date_to: date | None,
     ) -> StudentSelfStatsResponse:
         _validate_date_range(date_from, date_to)
-        profile = await self._resolve_own_student_profile(current_user)
+        profile = await self.resolve_own_student_profile(current_user)
         total, present, absent = await self._attendance.aggregate_counts(
             classroom_id=classroom_id,
             subject_id=subject_id,
