@@ -84,7 +84,7 @@ export function StudentAttendancePage() {
   const error = stats.error ?? detail.error ?? classrooms.error ?? subjects.error;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack student-attendance-page">
       <div className="page-heading">
         <p className="eyebrow">Student self-service</p>
         <h1>My attendance</h1>

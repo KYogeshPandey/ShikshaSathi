@@ -18,7 +18,7 @@ class StudentOnboardingStudentResult(BaseModel):
     student_profile_id: uuid.UUID | None = None
     full_name: str | None = None
     roll_number: str | None = None
-    profile_status: Literal["imported", "existing", "failed"]
+    profile_status: Literal["created", "updated", "reactivated", "existing", "failed"]
     photo_filename: str | None = None
     photo_status: Literal["not_provided", "matched", "missing", "duplicate", "invalid"]
     biometric_status: Literal[

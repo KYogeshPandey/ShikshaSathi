@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import type { z } from "zod";
@@ -19,7 +19,7 @@ export interface CrudField {
 
 export interface CrudColumn<Item> {
   label: string;
-  render(item: Item): string;
+  render(item: Item): ReactNode;
 }
 
 interface CrudItem {
@@ -30,6 +30,12 @@ interface CrudItem {
 interface AdminCrudPageProps<Item extends CrudItem> {
   title: string;
   description: string;
+  formTitle?: string;
+  listTitle?: string;
+  listEnabled?: boolean;
+  listPrompt?: string;
+  paginationKey?: string;
+  viewControls?: ReactNode;
   queryKey: QueryKey;
   fields: readonly CrudField[];
   columns: ReadonlyArray<CrudColumn<Item>>;
@@ -56,6 +62,12 @@ function errorMessage(error: Error | null): string | null {
 export function AdminCrudPage<Item extends CrudItem>({
   title,
   description,
+  formTitle,
+  listTitle = "Current records",
+  listEnabled = true,
+  listPrompt = "Choose a classroom to view records.",
+  paginationKey,
+  viewControls,
   queryKey,
   fields,
   columns,
@@ -68,13 +80,18 @@ export function AdminCrudPage<Item extends CrudItem>({
   toFormValues,
 }: AdminCrudPageProps<Item>) {
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const [pagination, setPagination] = useState({ key: paginationKey, offset: 0 });
+  const offset = pagination.key === paginationKey ? pagination.offset : 0;
+  const setOffset = (nextOffset: number) => {
+    setPagination({ key: paginationKey, offset: nextOffset });
+  };
   const [editing, setEditing] = useState<Item | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const form = useForm<CrudFormValues>({ defaultValues: emptyValues });
   const listQuery = useQuery({
     queryKey: [...queryKey, offset],
     queryFn: () => load(offset),
+    enabled: listEnabled,
   });
   const mutation = useMutation({
     mutationFn: async (command: MutationCommand<Item>) => {
@@ -124,8 +141,10 @@ export function AdminCrudPage<Item extends CrudItem>({
         </div>
       </div>
 
+      {viewControls}
+
       <form className="form-card" onSubmit={submit} noValidate>
-        <h2>{editing ? `Edit ${title}` : `Add ${title}`}</h2>
+        <h2>{editing ? `Edit ${title}` : formTitle ?? `Add ${title}`}</h2>
         <div className="form-grid">
           {fields.map((field) => {
             const disabled = mutation.isPending || Boolean(editing && field.createOnly);
@@ -181,9 +200,10 @@ export function AdminCrudPage<Item extends CrudItem>({
 
       <div className="table-card">
         <div className="table-card__header">
-          <h2>Current records</h2>
+          <h2>{listTitle}</h2>
           {page ? <span>{page.total} total</span> : null}
         </div>
+        {!listEnabled ? <p className="empty-state">{listPrompt}</p> : null}
         {listQuery.isPending ? <p className="empty-state">Loading records…</p> : null}
         {listQuery.isPending ? <SlowRequestNotice /> : null}
         {listQuery.error ? <p className="error-message" role="alert">{errorMessage(listQuery.error)}</p> : null}
@@ -219,10 +239,10 @@ export function AdminCrudPage<Item extends CrudItem>({
             </table>
           </div>
         ) : null}
-        <div className="pagination">
+        {listEnabled ? <div className="pagination">
           <button className="button button--quiet" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 100))} type="button">Previous</button>
           <button className="button button--quiet" disabled={!hasNext} onClick={() => setOffset(offset + 100)} type="button">Next</button>
-        </div>
+        </div> : null}
       </div>
     </section>
   );

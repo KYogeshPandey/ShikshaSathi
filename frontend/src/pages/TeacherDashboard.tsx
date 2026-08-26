@@ -17,7 +17,7 @@ export function TeacherDashboard() {
   const scope = analytics.data?.teacher_scope;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack dashboard-page teacher-dashboard-page">
       <div className="page-heading">
         <p className="eyebrow">Teacher overview</p>
         <h1>Teacher workspace</h1>

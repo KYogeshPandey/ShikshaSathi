@@ -16,11 +16,13 @@ const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 const importSchema = z.object({
   entity: z.enum(["classrooms", "subjects", "teacher-profiles", "student-profiles"]),
   classroom_id: z.string(),
+  update_existing: z.boolean(),
 });
 
 interface ImportFormValues {
   entity: BulkImportEntity;
   classroom_id: string;
+  update_existing: boolean;
 }
 
 function statusPill(kind: "success" | "failure" | "neutral", label: string): ReactNode {
@@ -34,8 +36,10 @@ function statusPill(kind: "success" | "failure" | "neutral", label: string): Rea
 }
 
 function profileStatus(student: StudentOnboardingStudentResult): ReactNode {
-  if (student.profile_status === "imported") return statusPill("success", "Imported");
-  if (student.profile_status === "existing") return statusPill("success", "Existing");
+  if (student.profile_status === "created") return statusPill("success", "Created");
+  if (student.profile_status === "updated") return statusPill("success", "Updated");
+  if (student.profile_status === "reactivated") return statusPill("success", "Reactivated");
+  if (student.profile_status === "existing") return statusPill("neutral", "Already exists");
   return statusPill("failure", "Failed");
 }
 
@@ -52,7 +56,7 @@ function photoStatus(student: StudentOnboardingStudentResult): ReactNode {
 function biometricStatus(student: StudentOnboardingStudentResult): ReactNode {
   if (student.biometric_status === "enrolled") return statusPill("success", "Face enrolled");
   if (student.biometric_status === "already_enrolled") {
-    return statusPill("failure", "Already enrolled");
+    return statusPill("neutral", "Already enrolled");
   }
   if (student.biometric_status === "failed") return statusPill("failure", "Failed");
   return statusPill("neutral", "Not processed");
@@ -60,7 +64,7 @@ function biometricStatus(student: StudentOnboardingStudentResult): ReactNode {
 
 export function AdminImportsPage() {
   const form = useForm<ImportFormValues>({
-    defaultValues: { entity: "classrooms", classroom_id: "" },
+    defaultValues: { entity: "classrooms", classroom_id: "", update_existing: false },
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photosInputRef = useRef<HTMLInputElement>(null);
@@ -80,11 +84,13 @@ export function AdminImportsPage() {
       classroomId,
       studentsFile,
       photosZip,
+      updateExisting,
     }: {
       classroomId: string;
       studentsFile: File;
       photosZip?: File;
-    }) => importsApi.onboard(classroomId, studentsFile, photosZip),
+      updateExisting: boolean;
+    }) => importsApi.onboard(classroomId, studentsFile, photosZip, updateExisting),
   });
   const isPending = importMutation.isPending || onboardingMutation.isPending;
 
@@ -124,6 +130,7 @@ export function AdminImportsPage() {
         classroomId: parsed.data.classroom_id,
         studentsFile: file,
         photosZip,
+        updateExisting: parsed.data.update_existing,
       });
     } else {
       importMutation.mutate({ entity: parsed.data.entity, file });
@@ -147,7 +154,28 @@ export function AdminImportsPage() {
         </p>
       </div>
       <form className="form-card" onSubmit={submit} noValidate>
-        {isStudentOnboarding ? <h2>Student onboarding</h2> : null}
+        {isStudentOnboarding ? (
+          <>
+            <div className="workflow-heading">
+              <p className="eyebrow">Guided import</p>
+              <h2>Student onboarding</h2>
+            </div>
+            <ol className="onboarding-steps" aria-label="Student onboarding steps">
+              <li className="onboarding-step">
+                <span className="onboarding-step__number">1</span>
+                <div><strong>Select classroom</strong><span>Choose the destination class for this roster.</span></div>
+              </li>
+              <li className="onboarding-step">
+                <span className="onboarding-step__number">2</span>
+                <div><strong>Upload spreadsheet</strong><span>Add the reviewed student CSV or XLSX file.</span></div>
+              </li>
+              <li className="onboarding-step">
+                <span className="onboarding-step__number">3</span>
+                <div><strong>Add photos (optional)</strong><span>Include a roll-number-matched ZIP for enrollment.</span></div>
+              </li>
+            </ol>
+          </>
+        ) : null}
         <div className="form-grid">
           <label className="field">
             <span>Record type</span>
@@ -162,8 +190,11 @@ export function AdminImportsPage() {
             <label className="field">
               <span>Classroom</span>
               <select
+                aria-label="Classroom"
                 aria-describedby={
-                  form.formState.errors.classroom_id ? "onboarding-classroom-error" : undefined
+                  form.formState.errors.classroom_id
+                    ? "onboarding-classroom-help onboarding-classroom-error"
+                    : "onboarding-classroom-help"
                 }
                 aria-invalid={Boolean(form.formState.errors.classroom_id)}
                 disabled={isPending || classrooms.isPending}
@@ -176,6 +207,9 @@ export function AdminImportsPage() {
                   </option>
                 ))}
               </select>
+              <small id="onboarding-classroom-help">
+                All students in this upload will be assigned to the selected classroom.
+              </small>
               {form.formState.errors.classroom_id?.message ? (
                 <small className="field-error" id="onboarding-classroom-error">
                   {form.formState.errors.classroom_id.message}
@@ -183,9 +217,38 @@ export function AdminImportsPage() {
               ) : null}
             </label>
           ) : null}
+          {isStudentOnboarding ? (
+            <label className="checkbox-option onboarding-update-option">
+              <input
+                disabled={isPending}
+                type="checkbox"
+                {...form.register("update_existing")}
+              />
+              <span>
+                <strong>Update existing student profiles</strong>
+                <small>
+                  When enabled, existing students can be moved to the selected classroom and
+                  their roll number can be updated. Existing biometric enrollments are never
+                  overwritten automatically.
+                </small>
+                <small>
+                  Inactive student profiles will be reactivated when updated through this
+                  onboarding batch.
+                </small>
+              </span>
+            </label>
+          ) : null}
           <label className="field">
             <span>{isStudentOnboarding ? "Student CSV or XLSX" : "CSV or XLSX file"}</span>
-            <input ref={fileInputRef} accept=".csv,.xlsx" type="file" />
+            <input
+              ref={fileInputRef}
+              accept=".csv,.xlsx"
+              aria-label={isStudentOnboarding ? "Student CSV or XLSX" : "CSV or XLSX file"}
+              type="file"
+            />
+            {isStudentOnboarding ? (
+              <small>Any classroom value inside the file is ignored for this onboarding batch.</small>
+            ) : null}
           </label>
           {isStudentOnboarding ? (
             <label className="field">
@@ -278,6 +341,17 @@ export function AdminImportsPage() {
               {" "}faces enrolled
             </span>
           </div>
+          <div className="onboarding-summary" aria-label="Student onboarding summary">
+            <div><span>Profiles ready</span><strong>{onboardingMutation.data.profile_success_count}</strong></div>
+            <div><span>Faces enrolled</span><strong>{onboardingMutation.data.face_success_count}</strong></div>
+            <div>
+              <span>Need attention</span>
+              <strong>
+                {onboardingMutation.data.students.filter((student) => student.issues.length > 0).length +
+                  onboardingMutation.data.unmatched_files.length}
+              </strong>
+            </div>
+          </div>
           <div className="table-scroll" role="region" aria-label="Student onboarding results" tabIndex={0}>
             <table>
               <thead>
@@ -296,7 +370,11 @@ export function AdminImportsPage() {
                   <tr key={student.row_number}>
                     <td>{student.full_name ?? `Spreadsheet row ${student.row_number}`}</td>
                     <td>{student.roll_number ?? "—"}</td>
-                    <td>{onboardingMutation.data.classroom_name}</td>
+                    <td>
+                      {student.profile_status === "existing"
+                        ? "Unchanged"
+                        : onboardingMutation.data.classroom_name}
+                    </td>
                     <td>{profileStatus(student)}</td>
                     <td>{photoStatus(student)}</td>
                     <td>{biometricStatus(student)}</td>

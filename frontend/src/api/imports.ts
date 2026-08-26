@@ -15,10 +15,12 @@ export const importsApi = {
     classroomId: string,
     studentsFile: File,
     photosZip?: File,
+    updateExisting = false,
   ): Promise<StudentOnboardingResult> {
     const form = new FormData();
     form.set("classroom_id", classroomId);
     form.set("students_file", studentsFile);
+    form.set("update_existing", String(updateExisting));
     if (photosZip) form.set("photos_zip", photosZip);
     return apiClient.post<StudentOnboardingResult>("/student-onboarding", form);
   },

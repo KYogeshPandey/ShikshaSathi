@@ -176,14 +176,14 @@ describe("application and authentication", () => {
     renderApplication("/");
     expect(
       await screen.findByRole("heading", {
-        name: /one workspace for smarter school operations/i,
+        name: /smarter attendance\. better academic decisions\./i,
       }),
     ).toBeVisible();
   });
 
   it("shows the public demo video, sign-in CTA, and safe Student demo access", async () => {
     renderApplication("/");
-    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+    await screen.findByRole("heading", { name: /smarter attendance\. better academic decisions\./i });
 
     const video = screen.getByLabelText("ShikshaSathi product demonstration");
     expect(video).toBeInstanceOf(HTMLVideoElement);
@@ -200,7 +200,7 @@ describe("application and authentication", () => {
         (link) => link.getAttribute("href") === "/login",
       ),
     ).toBe(true);
-    expect(screen.getAllByRole("button", { name: /explore student demo/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /explore student demo/i })).toHaveLength(3);
     expect(screen.queryByText("student.01@demo.shikshasathi.example")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/admin\s+(?:demo\s+)?password/i);
@@ -209,7 +209,7 @@ describe("application and authentication", () => {
 
   it("presents the polished review-first workflow, security controls, and local technology marks", async () => {
     renderApplication("/");
-    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+    await screen.findByRole("heading", { name: /smarter attendance\. better academic decisions\./i });
 
     for (const step of [
       "Student Onboarding",
@@ -265,7 +265,7 @@ describe("application and authentication", () => {
 
   it("closes the landing navigation with Escape and returns focus to its trigger", async () => {
     renderApplication("/");
-    await screen.findByRole("heading", { name: /one workspace for smarter school operations/i });
+    await screen.findByRole("heading", { name: /smarter attendance\. better academic decisions\./i });
     const menuButton = document.querySelector<HTMLButtonElement>(".ss-menu-button");
     expect(menuButton).not.toBeNull();
 

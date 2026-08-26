@@ -31,12 +31,14 @@ Session = Annotated[AsyncSession, Depends(get_db_session)]
 async def list_timetable_entries(
     current_user: AnyUser,
     session: Session,
+    classroom_id: uuid.UUID | None = None,
     include_inactive: bool = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[TimetableEntryRead]:
     return await TimetableService(session).list_for_user(
         current_user,
+        classroom_id=classroom_id,
         include_inactive=include_inactive,
         limit=limit,
         offset=offset,

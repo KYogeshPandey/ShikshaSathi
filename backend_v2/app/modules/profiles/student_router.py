@@ -38,12 +38,16 @@ async def get_my_student_profile(current_user: StudentUser, session: Session) ->
 async def list_student_profiles(
     _admin: AdminUser,
     session: Session,
+    classroom_id: uuid.UUID | None = None,
     include_inactive: bool = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[StudentProfileRead]:
     return await StudentProfileService(session).list(
-        include_inactive=include_inactive, limit=limit, offset=offset
+        classroom_id=classroom_id,
+        include_inactive=include_inactive,
+        limit=limit,
+        offset=offset,
     )
 
 

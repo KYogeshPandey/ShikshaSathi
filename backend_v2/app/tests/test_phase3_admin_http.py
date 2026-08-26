@@ -279,3 +279,112 @@ async def test_admin_profiles_membership_and_assignment_operations(
             headers=auth_headers(admin),
         )
     ).json()["is_active"] is False
+
+
+async def test_admin_classroom_filters_apply_before_pagination(
+    client_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    admin = await seed_user(db_session, email="filtered-admin@example.com", role=UserRole.ADMIN)
+    teacher = await seed_user(
+        db_session, email="filtered-teacher@example.com", role=UserRole.TEACHER
+    )
+    classroom_a = await create_resource(
+        client_db,
+        path="/api/v1/classrooms",
+        payload={"name": "Filtered Class A", "code": "filtered-class-a"},
+        user=admin,
+    )
+    classroom_b = await create_resource(
+        client_db,
+        path="/api/v1/classrooms",
+        payload={"name": "Filtered Class B", "code": "filtered-class-b"},
+        user=admin,
+    )
+    subject = await create_resource(
+        client_db,
+        path="/api/v1/subjects",
+        payload={"name": "Filtered Subject", "code": "filtered-subject"},
+        user=admin,
+    )
+    teacher_profile = await create_resource(
+        client_db,
+        path="/api/v1/teacher-profiles",
+        payload={"user_id": str(teacher.id)},
+        user=admin,
+    )
+
+    for index, (classroom, roll) in enumerate(
+        ((classroom_a, "101"), (classroom_b, "201"), (classroom_a, "102"))
+    ):
+        student = await seed_user(
+            db_session,
+            email=f"filtered-student-{index}@example.com",
+            role=UserRole.STUDENT,
+        )
+        student.full_name = f"Filtered Student {index}"
+        await db_session.commit()
+        await create_resource(
+            client_db,
+            path="/api/v1/student-profiles",
+            payload={
+                "user_id": str(student.id),
+                "classroom_id": classroom["id"],
+                "roll_number": roll,
+            },
+            user=admin,
+        )
+
+    roster = await client_db.get(
+        "/api/v1/student-profiles",
+        params={"classroom_id": classroom_a["id"], "limit": 1, "offset": 1},
+        headers=auth_headers(admin),
+    )
+    assert roster.status_code == 200, roster.text
+    assert roster.json()["total"] == 2
+    assert len(roster.json()["items"]) == 1
+    assert roster.json()["items"][0]["classroom_id"] == classroom_a["id"]
+    assert roster.json()["items"][0]["full_name"].startswith("Filtered Student")
+
+    assignments = []
+    for index, classroom in enumerate((classroom_a, classroom_b)):
+        assignment = await create_resource(
+            client_db,
+            path="/api/v1/teacher-assignments",
+            payload={
+                "teacher_profile_id": teacher_profile["id"],
+                "classroom_id": classroom["id"],
+                "subject_id": subject["id"],
+            },
+            user=admin,
+        )
+        assignments.append(assignment)
+        await create_resource(
+            client_db,
+            path="/api/v1/timetable-entries",
+            payload={
+                "teacher_profile_id": teacher_profile["id"],
+                "classroom_id": classroom["id"],
+                "subject_id": subject["id"],
+                "day_of_week": "monday" if index == 0 else "tuesday",
+                "start_time": "09:00:00",
+                "end_time": "10:00:00",
+            },
+            user=admin,
+        )
+
+    assignment_page = await client_db.get(
+        "/api/v1/teacher-assignments",
+        params={"classroom_id": classroom_b["id"], "limit": 1},
+        headers=auth_headers(admin),
+    )
+    assert assignment_page.json()["total"] == 1
+    assert assignment_page.json()["items"][0]["id"] == assignments[1]["id"]
+    assert assignment_page.json()["items"][0]["classroom_id"] == classroom_b["id"]
+
+    timetable_page = await client_db.get(
+        "/api/v1/timetable-entries",
+        params={"classroom_id": classroom_a["id"], "limit": 1},
+        headers=auth_headers(admin),
+    )
+    assert timetable_page.json()["total"] == 1
+    assert timetable_page.json()["items"][0]["classroom_id"] == classroom_a["id"]

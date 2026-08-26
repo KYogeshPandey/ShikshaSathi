@@ -90,7 +90,7 @@ export function StudentRecoveryPlannerPage() {
   };
 
   return (
-    <section className="page-stack">
+    <section className="page-stack recovery-planner-page">
       <div className="page-heading">
         <p className="eyebrow">Decision support</p>
         <h1>Attendance Recovery Planner</h1>

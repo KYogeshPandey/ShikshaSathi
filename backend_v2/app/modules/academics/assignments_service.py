@@ -56,12 +56,23 @@ class TeacherAssignmentService:
             raise InactiveAcademicReferenceError()
 
     async def list(
-        self, *, include_inactive: bool, limit: int, offset: int
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool,
+        limit: int,
+        offset: int,
     ) -> Page[TeacherAssignmentRead]:
         rows = await self._assignments.list(
-            include_inactive=include_inactive, limit=limit, offset=offset
+            classroom_id=classroom_id,
+            include_inactive=include_inactive,
+            limit=limit,
+            offset=offset,
         )
-        total = await self._assignments.count(include_inactive=include_inactive)
+        total = await self._assignments.count(
+            classroom_id=classroom_id,
+            include_inactive=include_inactive,
+        )
         return Page[TeacherAssignmentRead](
             items=[TeacherAssignmentRead.model_validate(row) for row in rows],
             total=total,

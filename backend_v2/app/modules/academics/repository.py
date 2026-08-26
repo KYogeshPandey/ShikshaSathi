@@ -380,7 +380,12 @@ class TeacherAssignmentRepository:
         return list(result.scalars().all())
 
     async def list(
-        self, *, include_inactive: bool = False, limit: int = 50, offset: int = 0
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+        limit: int = 50,
+        offset: int = 0,
     ) -> builtins.list[TeacherAssignment]:
         stmt = (
             select(TeacherAssignment)
@@ -388,12 +393,21 @@ class TeacherAssignmentRepository:
             .limit(limit)
             .offset(offset)
         )
+        if classroom_id is not None:
+            stmt = stmt.where(TeacherAssignment.classroom_id == classroom_id)
         if not include_inactive:
             stmt = stmt.where(TeacherAssignment.is_active.is_(True))
         return list((await self._session.execute(stmt)).scalars().all())
 
-    async def count(self, *, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+    ) -> int:
         stmt = select(func.count()).select_from(TeacherAssignment)
+        if classroom_id is not None:
+            stmt = stmt.where(TeacherAssignment.classroom_id == classroom_id)
         if not include_inactive:
             stmt = stmt.where(TeacherAssignment.is_active.is_(True))
         return int((await self._session.execute(stmt)).scalar_one())
@@ -548,7 +562,12 @@ class TimetableRepository:
         return list(result.scalars().all())
 
     async def list(
-        self, *, include_inactive: bool = False, limit: int = 50, offset: int = 0
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+        limit: int = 50,
+        offset: int = 0,
     ) -> builtins.list[TimetableEntry]:
         stmt = (
             select(TimetableEntry)
@@ -560,12 +579,21 @@ class TimetableRepository:
             .limit(limit)
             .offset(offset)
         )
+        if classroom_id is not None:
+            stmt = stmt.where(TimetableEntry.classroom_id == classroom_id)
         if not include_inactive:
             stmt = stmt.where(TimetableEntry.is_active.is_(True))
         return list((await self._session.execute(stmt)).scalars().all())
 
-    async def count(self, *, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+    ) -> int:
         stmt = select(func.count()).select_from(TimetableEntry)
+        if classroom_id is not None:
+            stmt = stmt.where(TimetableEntry.classroom_id == classroom_id)
         if not include_inactive:
             stmt = stmt.where(TimetableEntry.is_active.is_(True))
         return int((await self._session.execute(stmt)).scalar_one())

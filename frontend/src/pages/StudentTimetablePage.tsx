@@ -27,7 +27,7 @@ export function StudentTimetablePage() {
   const error = classrooms.error ?? subjects.error ?? timetable.error;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack student-timetable-page">
       <div className="page-heading">
         <p className="eyebrow">Your schedule</p>
         <h1>Weekly timetable</h1>
@@ -36,7 +36,7 @@ export function StudentTimetablePage() {
       {pending ? <p className="empty-state">Loading your weekly timetable…</p> : null}
       {pending ? <SlowRequestNotice /> : null}
       {error ? <p className="error-message" role="alert">{apiErrorMessage(error)}</p> : null}
-      <div className="table-card">
+      <div className="table-card timetable-card">
         <div className="table-card__header"><h2>Class schedule</h2>{timetable.data ? <span>{timetable.data.total} scheduled classes</span> : null}</div>
         {timetable.data?.items.length === 0 ? <p className="empty-state">No active timetable entries are available.</p> : null}
         {timetable.data?.items.length ? (

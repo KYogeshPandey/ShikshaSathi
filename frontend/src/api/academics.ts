@@ -16,6 +16,7 @@ import type {
 } from "../types/domain";
 
 interface ListOptions {
+  classroomId?: string;
   includeInactive?: boolean;
   limit?: number;
   offset?: number;
@@ -23,6 +24,7 @@ interface ListOptions {
 
 function listPath(path: string, options: ListOptions = {}): string {
   return withQuery(path, {
+    classroom_id: options.classroomId,
     include_inactive: options.includeInactive,
     limit: options.limit ?? 100,
     offset: options.offset ?? 0,

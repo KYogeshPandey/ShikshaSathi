@@ -141,6 +141,7 @@ class StudentProfileRead(BaseModel):
 
     id: uuid.UUID
     user_id: uuid.UUID
+    full_name: str | None = None
     classroom_id: uuid.UUID | None
     roll_number: str | None
     is_active: bool
