@@ -135,7 +135,7 @@ export function AnnouncementsPage({ canManage = false }: { canManage?: boolean }
   };
 
   return (
-    <section className="page-stack">
+    <section className="page-stack announcements-page">
       <div className="page-heading">
         <p className="eyebrow">Communication</p>
         <h1>Announcements</h1>

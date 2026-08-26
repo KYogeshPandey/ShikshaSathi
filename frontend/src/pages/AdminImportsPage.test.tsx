@@ -42,7 +42,7 @@ const successResult = {
       student_profile_id: "c93030ae-d6d7-4239-85a0-c139420c9668",
       full_name: "Yogesh Pandey",
       roll_number: "101",
-      profile_status: "imported" as const,
+      profile_status: "created" as const,
       photo_filename: "101.JPG",
       photo_status: "matched" as const,
       biometric_status: "enrolled" as const,
@@ -103,16 +103,40 @@ describe("bulk imports", () => {
     });
 
     await user.selectOptions(screen.getByLabelText("Record type"), "student-profiles");
+    expect(
+      screen.getByText("All students in this upload will be assigned to the selected classroom."),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Any classroom value inside the file is ignored for this onboarding batch."),
+    ).toBeVisible();
     await user.selectOptions(screen.getByLabelText("Classroom"), classroomId);
     expect(screen.getByLabelText("Student CSV or XLSX")).toBeInTheDocument();
     expect(screen.getByLabelText("Student photos ZIP (optional)")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Update existing student profiles/ })).not.toBeChecked();
+    expect(screen.getByText(/Existing biometric enrollments are never overwritten automatically/)).toBeVisible();
+    expect(screen.getByText(/Inactive student profiles will be reactivated/)).toBeVisible();
     await user.upload(screen.getByLabelText("Student CSV or XLSX"), file);
     await user.click(screen.getByRole("button", { name: "Validate & Import" }));
 
     await waitFor(() =>
-      expect(mocks.onboard).toHaveBeenCalledWith(classroomId, file, undefined),
+      expect(mocks.onboard).toHaveBeenCalledWith(classroomId, file, undefined, false),
     );
     expect(screen.queryByText("Choose a CSV or XLSX file.")).not.toBeInTheDocument();
+  });
+
+  it("requires the selected classroom for Student Onboarding", async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.selectOptions(screen.getByLabelText("Record type"), "student-profiles");
+    await user.upload(
+      screen.getByLabelText("Student CSV or XLSX"),
+      new File(["workbook"], "students.xlsx"),
+    );
+    await user.click(screen.getByRole("button", { name: "Validate & Import" }));
+
+    expect(await screen.findByText("Choose a classroom for this batch.")).toBeVisible();
+    expect(mocks.onboard).not.toHaveBeenCalled();
   });
 
   it("sends both files and renders names, statuses, reasons, and unmatched photos", async () => {
@@ -125,15 +149,16 @@ describe("bulk imports", () => {
     await user.selectOptions(screen.getByLabelText("Classroom"), classroomId);
     await user.upload(screen.getByLabelText("Student CSV or XLSX"), spreadsheet);
     await user.upload(screen.getByLabelText("Student photos ZIP (optional)"), photos);
+    await user.click(screen.getByRole("checkbox", { name: /Update existing student profiles/ }));
     await user.click(screen.getByRole("button", { name: "Validate & Import" }));
 
     await waitFor(() =>
-      expect(mocks.onboard).toHaveBeenCalledWith(classroomId, spreadsheet, photos),
+      expect(mocks.onboard).toHaveBeenCalledWith(classroomId, spreadsheet, photos, true),
     );
     expect(await screen.findByText("Yogesh Pandey")).toBeInTheDocument();
     expect(screen.getByText("101")).toBeInTheDocument();
     expect(screen.getAllByText("AI Section A").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Imported/)).toBeInTheDocument();
+    expect(screen.getByText(/Created/)).toBeInTheDocument();
     expect(screen.getByText(/Face enrolled/)).toBeInTheDocument();
     expect(screen.getByText("999.jpg")).toBeInTheDocument();
     expect(screen.queryByText("c93030ae-d6d7-4239-85a0-c139420c9668")).not.toBeInTheDocument();
@@ -169,7 +194,7 @@ describe("bulk imports", () => {
     );
     await user.click(screen.getByRole("button", { name: "Validate & Import" }));
 
-    expect(await screen.findByText(/Imported/)).toBeInTheDocument();
+    expect(await screen.findByText(/Created/)).toBeInTheDocument();
     expect(screen.getByText(/Missing/)).toBeInTheDocument();
     expect(screen.getByText(/No matching photo was provided/)).toBeInTheDocument();
   });

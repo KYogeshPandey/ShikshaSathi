@@ -17,7 +17,7 @@ export function AdminDashboard() {
   const population = analytics.data?.admin_population;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack dashboard-page admin-dashboard-page">
       <div className="page-heading">
         <p className="eyebrow">Admin overview</p>
         <h1>Administration workspace</h1>

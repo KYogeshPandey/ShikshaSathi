@@ -31,6 +31,11 @@ function localDate(): string {
     .slice(0, 10);
 }
 
+function studentInitials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] ?? "S"}${parts.length > 1 ? parts.at(-1)?.[0] ?? "" : ""}`.toUpperCase();
+}
+
 export function RecognitionAttendancePage() {
   const client = useQueryClient();
   const form = useForm<RecognitionScopeValues>({
@@ -210,7 +215,7 @@ export function RecognitionAttendancePage() {
           attendance is saved.
         </p>
       </div>
-      <form className="form-card" onSubmit={submit} noValidate>
+      <form className="form-card recognition-form" onSubmit={submit} noValidate>
         <div className="form-grid">
           <label className="field">
             <span>Classroom</span>
@@ -253,13 +258,16 @@ export function RecognitionAttendancePage() {
           </label>
         </div>
         <div className="camera-panel">
+          <div className="camera-panel__heading">
+            <div><h2>Camera or classroom image</h2><p>Capture once or choose a clear image, then create a proposal for teacher review.</p></div>
+          </div>
           <video aria-label="Camera preview" muted playsInline ref={videoRef} />
           <div className="button-row">
             <button className="button button--quiet" onClick={startCamera} type="button">Start camera</button>
             <button className="button button--quiet" disabled={!isCameraOn} onClick={capture} type="button">Capture image</button>
             <button className="button button--quiet" disabled={!isCameraOn} onClick={stopCamera} type="button">Stop camera</button>
           </div>
-          {file ? <p>Ready: {file.name}</p> : null}
+          {file ? <p className="capture-status">Ready: {file.name}</p> : null}
           {cameraError ? <p className="error-message" role="alert">{cameraError}</p> : null}
         </div>
         <button className="button button--primary" disabled={optionsLoading || createReview.isPending} type="submit">
@@ -271,13 +279,18 @@ export function RecognitionAttendancePage() {
       </form>
 
       {review ? (
-        <div className="table-card" aria-live="polite">
+        <div className="table-card recognition-review" aria-live="polite">
           <div className="table-card__header">
             <h2>Review proposals</h2>
             <span>{review.face_count} {review.face_count === 1 ? "face" : "faces"} detected</span>
           </div>
+          <div className="review-summary" aria-label="Recognition review summary">
+            <div><span>Faces detected</span><strong>{review.face_count}</strong></div>
+            <div><span>Proposed matches</span><strong>{proposedPresent.size}</strong></div>
+            <div><span>Needs review</span><strong>{unresolvedFaces ?? 0}</strong></div>
+          </div>
           {review.face_count === 0 ? <p className="empty-state">No faces were detected. Every student remains unmarked.</p> : null}
-          {unresolvedFaces ? <p className="error-message" role="status">{unresolvedFaces} unknown or low-confidence {unresolvedFaces === 1 ? "face needs" : "faces need"} review.</p> : null}
+          {unresolvedFaces ? <p className="notice-message notice-message--warning" role="status">{unresolvedFaces} unknown or low-confidence {unresolvedFaces === 1 ? "face needs" : "faces need"} review.</p> : null}
           {duplicateFaces ? <p>{duplicateFaces} duplicate {duplicateFaces === 1 ? "detection was" : "detections were"} ignored in the proposed statuses.</p> : null}
           {roster.isPending ? <p>Loading class roster...</p> : null}
           {roster.error ? <p className="error-message" role="alert">{apiErrorMessage(roster.error)}</p> : null}
@@ -285,9 +298,12 @@ export function RecognitionAttendancePage() {
             <div className="attendance-list">
               {roster.data.map((student) => (
                 <div className="attendance-row" key={student.student_profile_id}>
-                  <div>
-                    <strong>{student.full_name}</strong>
-                    <small>Roll {student.roll_number ?? "not assigned"}</small>
+                  <div className="attendance-student">
+                    <span className="student-avatar" aria-hidden="true">{studentInitials(student.full_name)}</span>
+                    <div>
+                      <strong>{student.full_name}</strong>
+                      <small>Roll {student.roll_number ?? "not assigned"}</small>
+                    </div>
                   </div>
                   <div className="segmented" role="group" aria-label={`Attendance for ${student.full_name}, roll ${student.roll_number ?? "not assigned"}`}>
                     {(["", "present", "absent"] as const).map((status) => (

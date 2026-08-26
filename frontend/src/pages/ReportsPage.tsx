@@ -178,7 +178,7 @@ export function ReportsPage() {
   );
 
   return (
-    <section className="page-stack">
+    <section className="page-stack reports-page">
       <div className="page-heading">
         <p className="eyebrow">Attendance intelligence</p>
         <h1>Reports</h1>

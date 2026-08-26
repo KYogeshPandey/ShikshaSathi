@@ -42,7 +42,7 @@ export function StudentDashboard() {
   const student = analytics.data?.student_context;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack dashboard-page student-overview-page">
       <div className="page-heading">
         <p className="eyebrow">Student overview</p>
         <h1>Student portal</h1>
@@ -62,15 +62,15 @@ export function StudentDashboard() {
 
       {overview.data ? (
         <>
-          <section aria-labelledby="attendance-overview-title" className="table-card">
+          <section aria-labelledby="attendance-overview-title" className="table-card student-attendance-overview">
             <div className="table-card__header">
               <h2 id="attendance-overview-title">Attendance overview</h2>
               <span>All marked records in your current classroom</span>
             </div>
             <div className="metric-grid">
-              <article className="metric-card"><span>Current attendance</span><strong>{overview.data.overall.percentage.toFixed(1)}%</strong></article>
+              <article className="metric-card metric-card--primary"><span>Current attendance</span><strong>{overview.data.overall.percentage.toFixed(1)}%</strong></article>
               <article className="metric-card"><span>Minimum required</span><strong>{overview.data.target_percentage}%</strong></article>
-              <article className="metric-card"><span>Status</span><strong>{subjectStatusLabel(overview.data.overall_status)}</strong></article>
+              <article className="metric-card metric-card--status"><span>Status</span><strong>{subjectStatusLabel(overview.data.overall_status)}</strong></article>
               <article className="metric-card"><span>Present / held</span><strong>{overview.data.overall.attended} / {overview.data.overall.held}</strong></article>
             </div>
           </section>
@@ -105,15 +105,13 @@ export function StudentDashboard() {
       ) : null}
 
       <div className="card-grid student-quick-actions" aria-label="Student quick actions">
-        <Link className="action-card action-card--featured" to="/student/recovery-planner">
+        <Link className="action-card" to="/student/recovery-planner">
           <strong>Attendance Recovery Planner</strong>
           <span>Plan the classes needed to reach your attendance target.</span>
-          <b>Open planner →</b>
         </Link>
-        <Link className="action-card action-card--featured" to="/student/timetable">
+        <Link className="action-card" to="/student/timetable">
           <strong>Weekly Timetable</strong>
           <span>See your active weekly class schedule.</span>
-          <b>View timetable →</b>
         </Link>
         <Link className="action-card" to="/student/attendance"><strong>My attendance</strong><span>Summary, filters, and records</span></Link>
         <Link className="action-card" to="/student/announcements"><strong>Announcements</strong><span>Notices available to you</span></Link>

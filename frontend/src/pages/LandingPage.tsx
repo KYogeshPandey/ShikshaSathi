@@ -292,11 +292,11 @@ export function LandingPage() {
           </div>
 
           <div className="ss-nav-actions">
-            <a href="/login" className="ss-text-link">
-              Sign In
+            <a href="#demo" className="ss-text-link">
+              Watch demo
             </a>
             <a href="/login" className="ss-button ss-button-primary">
-              Open ShikshaSathi <Icon name="arrow" size={17} />
+              Sign in <Icon name="arrow" size={17} />
             </a>
           </div>
 
@@ -330,7 +330,7 @@ export function LandingPage() {
                 className="ss-button ss-button-primary"
                 onClick={() => setMenuOpen(false)}
               >
-                Open ShikshaSathi
+                Sign in
               </a>
             </div>
           </div>
@@ -341,20 +341,18 @@ export function LandingPage() {
       <section className="ss-container ss-hero">
         <div className="ss-hero-copy">
           <p className="ss-eyebrow">Smart school operations and attendance intelligence</p>
-          <h1>One workspace for smarter school operations.</h1>
+          <h1>Smarter attendance. Better academic decisions.</h1>
           <p className="ss-lead">
             Connect student onboarding, reviewed attendance, reporting, and
             student recovery planning in one secure role-based platform.
           </p>
 
           <div className="ss-hero-actions">
-            <a href="/login" className="ss-button ss-button-primary">
-              Sign in <Icon name="arrow" size={17} />
-            </a>
-            <a href="#demo" className="ss-button ss-button-secondary">
+            <StudentDemoButton variant="primary" />
+            <a href="/login" className="ss-button ss-button-secondary">Sign in</a>
+            <a href="#demo" className="ss-watch-link">
               Watch demo <span aria-hidden="true">↓</span>
             </a>
-            <StudentDemoButton variant="secondary" />
           </div>
 
           <div className="ss-proof">
@@ -625,9 +623,10 @@ export function LandingPage() {
               Give your team a clearer way to manage the school day and support
               every learner.
             </p>
-            <a href="/login" className="ss-button ss-button-primary">
-              Open ShikshaSathi <Icon name="arrow" size={17} />
-            </a>
+            <div className="ss-final-cta-actions">
+              <StudentDemoButton variant="primary" />
+              <a href="/login" className="ss-button ss-button-secondary">Sign in</a>
+            </div>
           </div>
         </div>
       </section>

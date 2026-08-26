@@ -158,20 +158,42 @@ class StudentProfileRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_identities_by_classroom(
-        self, classroom_id: uuid.UUID
+    async def list_identities(
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+        limit: int | None = 50,
+        offset: int = 0,
     ) -> list[StudentProfileIdentity]:
-        """Return classroom profiles with names sourced from ``User.full_name``."""
+        """Return paginated profiles with names sourced from ``User.full_name``."""
         stmt = (
             select(StudentProfile, User.full_name)
             .join(User, User.id == StudentProfile.user_id)
-            .where(StudentProfile.classroom_id == classroom_id)
+            .order_by(StudentProfile.roll_number, User.full_name, StudentProfile.id)
+            .offset(offset)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if classroom_id is not None:
+            stmt = stmt.where(StudentProfile.classroom_id == classroom_id)
+        if not include_inactive:
+            stmt = stmt.where(StudentProfile.is_active.is_(True))
         result = await self._session.execute(stmt)
         return [
             StudentProfileIdentity(profile=profile, full_name=full_name)
             for profile, full_name in result.tuples().all()
         ]
+
+    async def list_identities_by_classroom(
+        self, classroom_id: uuid.UUID
+    ) -> list[StudentProfileIdentity]:
+        """Return active classroom profiles with names for operational rosters."""
+        return await self.list_identities(
+            classroom_id=classroom_id,
+            include_inactive=False,
+            limit=None,
+        )
 
     async def list(
         self, *, include_inactive: bool = False, limit: int = 50, offset: int = 0
@@ -187,8 +209,15 @@ class StudentProfileRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count(self, *, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool = False,
+    ) -> int:
         stmt = select(func.count()).select_from(StudentProfile)
+        if classroom_id is not None:
+            stmt = stmt.where(StudentProfile.classroom_id == classroom_id)
         if not include_inactive:
             stmt = stmt.where(StudentProfile.is_active.is_(True))
         return int((await self._session.execute(stmt)).scalar_one())

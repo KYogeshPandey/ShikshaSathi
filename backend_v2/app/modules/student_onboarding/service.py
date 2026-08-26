@@ -1,9 +1,9 @@
 """Orchestrate existing student import, biometric enrollment, and processing.
 
-The spreadsheet remains the identity authority: ZIP member stems are matched
-only to rows in this request, never through a global roll-number lookup. The
-existing importer, enrollment lifecycle, image validation/storage, and face
-processing pipeline retain ownership of their respective rules.
+The selected classroom is authoritative for every row in the batch. Spreadsheet
+identity values still scope ZIP member matching to this request, never through a
+global roll-number lookup. The existing importer, enrollment lifecycle, image
+validation/storage, and face processing pipeline retain their respective rules.
 """
 
 from __future__ import annotations
@@ -43,6 +43,8 @@ from app.modules.profiles.errors import (
 )
 from app.modules.profiles.models import StudentProfile
 from app.modules.profiles.repository import StudentProfileRepository
+from app.modules.profiles.schemas import StudentProfileUpdate
+from app.modules.profiles.student_service import StudentProfileService
 from app.modules.student_onboarding.schemas import (
     StudentOnboardingIssue,
     StudentOnboardingResult,
@@ -109,6 +111,7 @@ class StudentOnboardingService:
         students_filename: str,
         students_content: bytes,
         photos_chunks: AsyncIterator[bytes] | None,
+        update_existing: bool = False,
         request_id: str | None = None,
     ) -> StudentOnboardingResult:
         classroom = await self._classrooms.get_by_id(classroom_id)
@@ -123,6 +126,7 @@ class StudentOnboardingService:
             filename=students_filename,
             content=students_content,
             fixed_values={"classroom_id": selected_classroom_id},
+            fixed_values_are_authoritative=True,
         )
         # A handled per-row integrity conflict (notably an already-existing
         # profile on an idempotent rerun) rolls back that row's transaction,
@@ -131,7 +135,9 @@ class StudentOnboardingService:
         # its ID; this avoids an implicit async lazy load outside greenlet
         # context while leaving the existing import transaction semantics intact.
         await self._session.refresh(current_user)
-        students = [await self._resolve_row(row) for row in detailed.rows]
+        students = [
+            await self._resolve_row(row, update_existing=update_existing) for row in detailed.rows
+        ]
         if photos_chunks is None:
             return self._result(
                 students,
@@ -175,35 +181,57 @@ class StudentOnboardingService:
         finally:
             self._storage.discard_bulk_zip_staged(zip_key)
 
-    async def _resolve_row(self, row: BulkImportRowOutcome) -> StudentOnboardingStudentResult:
+    async def _resolve_row(
+        self, row: BulkImportRowOutcome, *, update_existing: bool
+    ) -> StudentOnboardingStudentResult:
         user_id = self._uuid_value(row.values.get("user_id"))
         requested_classroom_id = self._uuid_value(row.values.get("classroom_id"))
         requested_roll = self._string_value(row.values.get("roll_number"))
         profile: StudentProfile | None = None
-        profile_status: Literal["imported", "existing", "failed"] = "failed"
+        profile_status: Literal["created", "updated", "reactivated", "existing", "failed"] = (
+            "failed"
+        )
         issues: list[StudentOnboardingIssue] = []
 
         if row.error is None and user_id is not None:
             profile = await self._profiles.get_by_user_id(user_id)
             if profile is not None:
-                profile_status = "imported"
+                profile_status = "created"
         elif (
             row.error is not None
             and row.error.code == "STUDENT_PROFILE_ALREADY_EXISTS"
             and user_id is not None
         ):
             candidate = await self._profiles.get_by_user_id(user_id)
-            if (
-                candidate is not None
-                and candidate.is_active
-                and candidate.classroom_id == requested_classroom_id
-                and _normalize_roll(candidate.roll_number) == _normalize_roll(requested_roll)
-            ):
-                profile = candidate
-                profile_status = "existing"
+            if candidate is not None:
+                if update_existing and requested_classroom_id is not None:
+                    was_inactive = not candidate.is_active
+                    try:
+                        profile = await StudentProfileService(self._session).update(
+                            candidate.id,
+                            StudentProfileUpdate(
+                                classroom_id=requested_classroom_id,
+                                roll_number=requested_roll,
+                                is_active=True,
+                            ),
+                        )
+                    except AppError as exc:
+                        issues.append(_issue(exc.code, exc.message))
+                    else:
+                        profile_status = "reactivated" if was_inactive else "updated"
+                else:
+                    profile = candidate
+                    profile_status = "existing"
+                    issues.append(
+                        _issue(
+                            "STUDENT_PROFILE_ALREADY_EXISTS",
+                            "Existing student was not changed. Enable updates to move or "
+                            "reactivate this student.",
+                        )
+                    )
 
         if profile is None:
-            if row.error is not None:
+            if row.error is not None and not issues:
                 issues.append(_issue(row.error.code, row.error.message))
             elif user_id is None:
                 issues.append(_issue("BULK_IMPORT_ROW_VALIDATION_ERROR", "Invalid user_id."))
@@ -313,6 +341,16 @@ class StudentOnboardingService:
                         )
                     )
                     continue
+                if student.profile_status == "existing":
+                    student.biometric_status = "not_processed"
+                    student.issues.append(
+                        _issue(
+                            "EXISTING_PROFILE_SKIPPED",
+                            "Face enrollment was not changed because existing-profile updates "
+                            "are off.",
+                        )
+                    )
+                    continue
                 await self._enroll_one(
                     student=student,
                     zf=zf,
@@ -412,9 +450,7 @@ class StudentOnboardingService:
             classroom_id=classroom_id,
             classroom_name=classroom_name,
             total_students=len(students),
-            profile_success_count=sum(
-                student.profile_status in {"imported", "existing"} for student in students
-            ),
+            profile_success_count=sum(student.profile_status != "failed" for student in students),
             face_success_count=sum(student.biometric_status == "enrolled" for student in students),
             students=students,
             unmatched_files=unmatched_files,

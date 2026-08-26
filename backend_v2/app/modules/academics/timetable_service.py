@@ -72,15 +72,22 @@ class TimetableService:
         self,
         current_user: User,
         *,
+        classroom_id: uuid.UUID | None = None,
         include_inactive: bool,
         limit: int,
         offset: int,
     ) -> Page[TimetableEntryRead]:
         if current_user.role is UserRole.ADMIN:
             rows = await self._timetable.list(
-                include_inactive=include_inactive, limit=limit, offset=offset
+                classroom_id=classroom_id,
+                include_inactive=include_inactive,
+                limit=limit,
+                offset=offset,
             )
-            total = await self._timetable.count(include_inactive=include_inactive)
+            total = await self._timetable.count(
+                classroom_id=classroom_id,
+                include_inactive=include_inactive,
+            )
         elif current_user.role is UserRole.TEACHER:
             teacher_profile = await self._teachers.get_by_user_id(current_user.id)
             if teacher_profile is None or not teacher_profile.is_active:

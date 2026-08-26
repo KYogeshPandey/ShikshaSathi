@@ -80,6 +80,7 @@ export interface TeacherProfileUpdate {
 
 export interface StudentProfile extends ActiveResource {
   user_id: string;
+  full_name?: string | null;
   classroom_id: string | null;
   roll_number: string | null;
 }
@@ -466,7 +467,7 @@ export interface StudentOnboardingStudentResult {
   student_profile_id: string | null;
   full_name: string | null;
   roll_number: string | null;
-  profile_status: "imported" | "existing" | "failed";
+  profile_status: "created" | "updated" | "reactivated" | "existing" | "failed";
   photo_filename: string | null;
   photo_status: "not_provided" | "matched" | "missing" | "duplicate" | "invalid";
   biometric_status:

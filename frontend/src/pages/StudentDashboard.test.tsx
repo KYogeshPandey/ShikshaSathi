@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StudentDashboard } from "./StudentDashboard";
@@ -61,6 +61,12 @@ describe("Student overview", () => {
       "href",
       "/student/timetable",
     );
+    const quickActions = within(screen.getByLabelText("Student quick actions")).getAllByRole("link");
+    expect(quickActions).toHaveLength(4);
+    for (const action of quickActions) {
+      expect(action).toHaveClass("action-card");
+      expect(action).not.toHaveClass("action-card--featured");
+    }
     expect(screen.queryByLabelText("Plan for")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Student weekly timetable" })).not.toBeInTheDocument();
     expect(await screen.findByText("Recent attendance trend")).toBeVisible();

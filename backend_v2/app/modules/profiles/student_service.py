@@ -45,14 +45,30 @@ class StudentProfileService:
             raise InactiveClassroomMembershipError()
 
     async def list(
-        self, *, include_inactive: bool, limit: int, offset: int
+        self,
+        *,
+        classroom_id: uuid.UUID | None = None,
+        include_inactive: bool,
+        limit: int,
+        offset: int,
     ) -> Page[StudentProfileRead]:
-        rows = await self._profiles.list(
-            include_inactive=include_inactive, limit=limit, offset=offset
+        identities = await self._profiles.list_identities(
+            classroom_id=classroom_id,
+            include_inactive=include_inactive,
+            limit=limit,
+            offset=offset,
         )
-        total = await self._profiles.count(include_inactive=include_inactive)
+        total = await self._profiles.count(
+            classroom_id=classroom_id,
+            include_inactive=include_inactive,
+        )
         return Page[StudentProfileRead](
-            items=[StudentProfileRead.model_validate(row) for row in rows],
+            items=[
+                StudentProfileRead.model_validate(identity.profile).model_copy(
+                    update={"full_name": identity.full_name}
+                )
+                for identity in identities
+            ],
             total=total,
             limit=limit,
             offset=offset,

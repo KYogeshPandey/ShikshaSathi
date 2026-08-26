@@ -27,6 +27,11 @@ function today(): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
+function studentInitials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] ?? "S"}${parts.length > 1 ? parts.at(-1)?.[0] ?? "" : ""}`.toUpperCase();
+}
+
 export function ManualAttendancePage() {
   const client = useQueryClient();
   const [scope, setScope] = useState<ScopeValues | null>(null);
@@ -103,7 +108,10 @@ export function ManualAttendancePage() {
           <div className="attendance-list">
             {roster.data.map((student) => (
               <div className="attendance-row" key={student.student_profile_id}>
-                <div><strong>{student.full_name}</strong><small>Roll {student.roll_number ?? "not assigned"}</small></div>
+                <div className="attendance-student">
+                  <span className="student-avatar" aria-hidden="true">{studentInitials(student.full_name)}</span>
+                  <div><strong>{student.full_name}</strong><small>Roll {student.roll_number ?? "not assigned"}</small></div>
+                </div>
                 <div className="segmented" role="group" aria-label={`Attendance for ${student.full_name}`}>
                   {(["present", "absent"] as const).map((status) => <button aria-pressed={statusFor(student.student_profile_id) === status} className={statusFor(student.student_profile_id) === status ? "segment segment--active" : "segment"} key={status} onClick={() => setStatuses((current) => ({ ...current, [student.student_profile_id]: status }))} type="button">{status}</button>)}
                 </div>

@@ -98,6 +98,7 @@ class BulkImportService:
         filename: str,
         content: bytes,
         fixed_values: dict[str, object] | None = None,
+        fixed_values_are_authoritative: bool = False,
     ) -> BulkImportDetailedResult:
         rows = parse_import_file(filename=filename, content=content)
         expected_columns = _EXPECTED_COLUMNS[entity]
@@ -117,12 +118,16 @@ class BulkImportService:
                 errors.append(error)
                 outcomes.append(BulkImportRowOutcome(row_number, row, error))
                 continue
-            mismatched = sorted(
-                key
-                for key, fixed_value in fixed_values.items()
-                if key in row
-                and str(row[key]).strip()
-                and str(row[key]).strip().casefold() != str(fixed_value).strip().casefold()
+            mismatched = (
+                []
+                if fixed_values_are_authoritative
+                else sorted(
+                    key
+                    for key, fixed_value in fixed_values.items()
+                    if key in row
+                    and str(row[key]).strip()
+                    and str(row[key]).strip().casefold() != str(fixed_value).strip().casefold()
+                )
             )
             if mismatched:
                 error = BulkImportRowError(

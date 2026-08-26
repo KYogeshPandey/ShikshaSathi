@@ -42,6 +42,10 @@ async def onboard_students(
     photos_zip: Annotated[
         UploadFile | None, File(description="Optional ZIP of roll-number photos")
     ] = None,
+    update_existing: Annotated[
+        bool,
+        Form(description="Update and reactivate existing student profiles in this batch"),
+    ] = False,
 ) -> StudentOnboardingResult:
     try:
         students_content = await students_file.read(MAX_IMPORT_BYTES + 1)
@@ -53,5 +57,6 @@ async def onboard_students(
         students_filename=students_file.filename or "",
         students_content=students_content,
         photos_chunks=_iter_upload_chunks(photos_zip) if photos_zip is not None else None,
+        update_existing=update_existing,
         request_id=getattr(request.state, "request_id", None),
     )
